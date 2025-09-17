@@ -7,6 +7,7 @@ import { StorageService, Student } from "@/lib/storage";
 import { User, BookOpen, Award, Calendar, Home, GraduationCap, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import jsPDF from "jspdf";
 
 export default function StudentPortal() {
   const [student, setStudent] = useState<Student | null>(null);
@@ -56,6 +57,45 @@ export default function StudentPortal() {
   const latestPerformance = getLatestPerformance();
   const totalSubjects = latestPerformance ? latestPerformance.A + latestPerformance.B + latestPerformance.C : 0;
 
+  const generateReportCard = () => {
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(18);
+    doc.text('STUDENT REPORT CARD', 20, 20);
+    
+    // School Info
+    doc.setFontSize(12);
+    doc.text(`School: ${user.school?.name}`, 20, 35);
+    doc.text(`Center Number: ${user.school?.centerNumber}`, 20, 45);
+    doc.text(`Academic Year: ${new Date().getFullYear()}`, 20, 55);
+    
+    // Student Info
+    doc.text(`Student: ${student.firstName} ${student.surname}`, 20, 70);
+    doc.text(`ID: ${student.enrolmentNumber}`, 20, 80);
+    doc.text(`Level: ${student.currentLevel}`, 20, 90);
+    doc.text(`Gender: ${student.gender}`, 20, 100);
+    
+    // Performance
+    if (latestPerformance) {
+      doc.text('ACADEMIC PERFORMANCE:', 20, 120);
+      doc.text(`A Grades: ${latestPerformance.A}`, 30, 135);
+      doc.text(`B Grades: ${latestPerformance.B}`, 30, 145);
+      doc.text(`C Grades: ${latestPerformance.C}`, 30, 155);
+      doc.text(`Overall: ${student.overallPerformance}`, 30, 165);
+    }
+    
+    // Career Pathways
+    if (student.careerPathways.length > 0) {
+      doc.text('CAREER PATHWAYS:', 20, 185);
+      student.careerPathways.forEach((pathway, index) => {
+        doc.text(`• ${pathway}`, 30, 195 + (index * 10));
+      });
+    }
+    
+    doc.save(`${student.firstName}_${student.surname}_Report_Card.pdf`);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-success/5">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -72,15 +112,24 @@ export default function StudentPortal() {
               <p className="text-muted-foreground">Welcome back, {user.firstName}!</p>
             </div>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              AuthService.logout();
-              navigate('/');
-            }}
-          >
-            Logout
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => generateReportCard()}
+              className="flex items-center gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              Download Report Card
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                AuthService.logout();
+                navigate('/');
+              }}
+            >
+              Logout
+            </Button>
+          </div>
         </div>
 
         {/* Student Information */}
