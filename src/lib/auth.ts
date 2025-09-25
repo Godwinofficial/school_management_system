@@ -113,6 +113,8 @@ export class AuthService {
     const user = mockUsers[email];
     if (user && password === '123456') {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
+      // Dispatch custom event for authentication change
+      window.dispatchEvent(new Event('authChange'));
       return user;
     }
     return null;
@@ -125,6 +127,8 @@ export class AuthService {
 
   static logout(): void {
     localStorage.removeItem(this.STORAGE_KEY);
+    // Dispatch custom event for authentication change
+    window.dispatchEvent(new Event('authChange'));
   }
 
   static isAuthenticated(): boolean {

@@ -16,6 +16,12 @@ import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import AddStudent from "./pages/AddStudent";
 import StudentPortal from "./pages/StudentPortal";
+import AcademicRecords from "./pages/AcademicRecords";
+import Reports from "./pages/Reports";
+import Statistics from "./pages/Statistics";
+import Schools from "./pages/Schools";
+import Planning from "./pages/Planning";
+import Settings from "./pages/Settings";
 import Unauthorized from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
@@ -53,10 +59,23 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 };
 
 const App = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(AuthService.isAuthenticated());
 
   useEffect(() => {
-    setIsAuthenticated(AuthService.isAuthenticated());
+    const handleStorageChange = () => {
+      setIsAuthenticated(AuthService.isAuthenticated());
+    };
+
+    // Listen for storage changes (for logout/login)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Custom event for authentication changes
+    window.addEventListener('authChange', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('authChange', handleStorageChange);
+    };
   }, []);
 
   return (
@@ -104,6 +123,54 @@ const App = () => {
               <ProtectedRoute>
                 <AppLayout>
                   <AddStudent />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/academic-records" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <AcademicRecords />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/reports" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Reports />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/statistics" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Statistics />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/schools" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Schools />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/planning" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Planning />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Settings />
                 </AppLayout>
               </ProtectedRoute>
             } />
