@@ -42,7 +42,9 @@ const getMenuItems = (userRole: UserRole, userLevel: string) => {
       ...baseItems,
       { title: "Students", url: "/students", icon: Users },
       { title: "Add Student", url: "/students/add", icon: UserPlus },
-      { title: "Academic Records", url: "/academic", icon: BookOpen },
+      { title: "Teachers", url: "/teachers", icon: GraduationCap },
+      { title: "Classes", url: "/classes", icon: BookOpen },
+      { title: "Academic Records", url: "/academic-records", icon: Award },
       { title: "Reports", url: "/reports", icon: FileText },
       { title: "Statistics", url: "/statistics", icon: BarChart3 },
     ];

@@ -16,6 +16,8 @@ import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import AddStudent from "./pages/AddStudent";
 import StudentPortal from "./pages/StudentPortal";
+import Teachers from "./pages/Teachers";
+import Classes from "./pages/Classes";
 import AcademicRecords from "./pages/AcademicRecords";
 import Reports from "./pages/Reports";
 import Statistics from "./pages/Statistics";
@@ -171,6 +173,22 @@ const App = () => {
               <ProtectedRoute>
                 <AppLayout>
                   <Settings />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/teachers" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Teachers />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/classes" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Classes />
                 </AppLayout>
               </ProtectedRoute>
             } />

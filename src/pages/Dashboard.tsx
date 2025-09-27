@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthService } from "@/lib/auth";
 import { StorageService } from "@/lib/storage";
-import { Users, School, TrendingUp, Award, BookOpen, AlertCircle } from "lucide-react";
+import { Users, School, TrendingUp, Award, BookOpen, AlertCircle, GraduationCap, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 
@@ -71,29 +71,47 @@ export default function Dashboard() {
         <Card className="border-0 shadow-soft bg-gradient-to-br from-card to-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              {userLevel === 'school' ? 'School Info' : 'Schools'}
+              {userLevel === 'school' ? 'Teachers' : 'Schools'}
             </CardTitle>
-            <School className="h-4 w-4 text-success" />
+            {userLevel === 'school' ? (
+              <GraduationCap className="h-4 w-4 text-success" />
+            ) : (
+              <School className="h-4 w-4 text-success" />
+            )}
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {userLevel === 'school' ? user.school?.type : stats.totalSchools}
+              {userLevel === 'school' ? stats.totalTeachers : stats.totalSchools}
             </div>
             <p className="text-xs text-muted-foreground">
-              {userLevel === 'school' ? `${user.school?.district}, ${user.school?.province}` : 'Educational Institutions'}
+              {userLevel === 'school' 
+                ? `${stats.teacherStats?.active || 0} Active Teachers`
+                : 'Educational Institutions'
+              }
             </p>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-soft bg-gradient-to-br from-card to-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Students</CardTitle>
-            <TrendingUp className="h-4 w-4 text-warning" />
+            <CardTitle className="text-sm font-medium">
+              {userLevel === 'school' ? 'Classes' : 'Active Students'}
+            </CardTitle>
+            {userLevel === 'school' ? (
+              <BookOpen className="h-4 w-4 text-warning" />
+            ) : (
+              <TrendingUp className="h-4 w-4 text-warning" />
+            )}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.statusStats.active}</div>
+            <div className="text-2xl font-bold">
+              {userLevel === 'school' ? stats.totalClasses : stats.statusStats.active}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Currently enrolled
+              {userLevel === 'school' 
+                ? `Capacity: ${stats.capacityStats?.totalCapacity || 0}`
+                : 'Currently enrolled'
+              }
             </p>
           </CardContent>
         </Card>
@@ -115,12 +133,12 @@ export default function Dashboard() {
       </div>
 
       {/* Detailed Information */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Performance Overview */}
         <Card className="border-0 shadow-soft">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-primary" />
+              <Award className="h-5 w-5 text-primary" />
               Academic Performance
             </CardTitle>
             <CardDescription>
@@ -175,6 +193,43 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Staff & Capacity Info (School Level Only) */}
+        {userLevel === 'school' && (
+          <Card className="border-0 shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserCheck className="h-5 w-5 text-success" />
+                Staff & Capacity
+              </CardTitle>
+              <CardDescription>
+                Teacher status and class capacity
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <span className="text-sm font-medium">Active Teachers</span>
+                  <Badge variant="default">{stats.teacherStats?.active || 0}</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <span className="text-sm font-medium">On Leave</span>
+                  <Badge variant="secondary">{stats.teacherStats?.onLeave || 0}</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <span className="text-sm font-medium">Students in Classes</span>
+                  <Badge variant="outline">{stats.capacityStats?.studentsInClasses || 0}</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <span className="text-sm font-medium">Unassigned Students</span>
+                  <Badge variant={stats.capacityStats?.unassignedStudents > 0 ? "destructive" : "outline"}>
+                    {stats.capacityStats?.unassignedStudents || 0}
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* School Specific Information */}

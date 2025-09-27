@@ -3,17 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { StorageService, Student } from "@/lib/storage";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StorageService, Teacher } from "@/lib/storage";
 import { AuthService } from "@/lib/auth";
-import { Search, UserPlus, Eye, Edit, Trash2 } from "lucide-react";
+import { Search, UserPlus, Eye, Edit, Trash2, Users, GraduationCap, Phone, Mail } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   AlertDialog,
@@ -28,75 +21,70 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 
-export default function Students() {
-  const [students, setStudents] = useState<Student[]>([]);
+export default function Teachers() {
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
+  const [filteredTeachers, setFilteredTeachers] = useState<Teacher[]>([]);
   
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
 
   useEffect(() => {
-    // Load students based on user level
-    const loadedStudents = StorageService.getStudents(
+    const loadedTeachers = StorageService.getTeachers(
       userLevel === 'school' ? user?.school?.id : undefined
     );
-    setStudents(loadedStudents);
-    setFilteredStudents(loadedStudents);
+    setTeachers(loadedTeachers);
+    setFilteredTeachers(loadedTeachers);
   }, [user?.school?.id, userLevel]);
 
   useEffect(() => {
-    // Filter students based on search term
     if (searchTerm.trim() === "") {
-      setFilteredStudents(students);
+      setFilteredTeachers(teachers);
     } else {
-      const filtered = students.filter(student =>
-        student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.surname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.enrolmentNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (student.otherNames && student.otherNames.toLowerCase().includes(searchTerm.toLowerCase()))
+      const filtered = teachers.filter(teacher =>
+        teacher.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teacher.surname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teacher.employeeNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teacher.subjects.some(subject => subject.toLowerCase().includes(searchTerm.toLowerCase()))
       );
-      setFilteredStudents(filtered);
+      setFilteredTeachers(filtered);
     }
-  }, [searchTerm, students]);
+  }, [searchTerm, teachers]);
 
-  const handleDeleteStudent = async (studentId: string) => {
+  const handleDeleteTeacher = async (teacherId: string) => {
     try {
-      StorageService.deleteStudent(studentId);
-      const updatedStudents = students.filter(s => s.id !== studentId);
-      setStudents(updatedStudents);
-      setFilteredStudents(updatedStudents);
+      StorageService.deleteTeacher(teacherId);
+      const updatedTeachers = teachers.filter(t => t.id !== teacherId);
+      setTeachers(updatedTeachers);
+      setFilteredTeachers(updatedTeachers);
       toast({
-        title: "Student deleted",
-        description: "Student record has been successfully deleted.",
+        title: "Teacher deleted",
+        description: "Teacher record has been successfully deleted.",
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to delete student record.",
+        description: "Failed to delete teacher record.",
         variant: "destructive",
       });
     }
   };
 
-  const getStatusColor = (status: Student['status']) => {
+  const getStatusColor = (status: Teacher['status']) => {
     switch (status) {
       case 'Active': return 'bg-success text-success-foreground';
-      case 'Transferred': return 'bg-warning text-warning-foreground';
-      case 'Dropped Out': return 'bg-destructive text-destructive-foreground';
-      case 'Graduated': return 'bg-primary text-primary-foreground';
-      case 'Deceased': return 'bg-muted text-muted-foreground';
+      case 'On Leave': return 'bg-warning text-warning-foreground';
+      case 'Transferred': return 'bg-primary text-primary-foreground';
+      case 'Resigned': return 'bg-muted text-muted-foreground';
       default: return 'bg-muted text-muted-foreground';
     }
   };
 
-  const getPerformanceColor = (performance: Student['overallPerformance']) => {
-    switch (performance) {
-      case 'Excellent': return 'bg-success text-success-foreground';
-      case 'Good': return 'bg-primary text-primary-foreground';
-      case 'Average': return 'bg-warning text-warning-foreground';
-      case 'Below Average': return 'bg-destructive text-destructive-foreground';
-      case 'Poor': return 'bg-muted text-muted-foreground';
+  const getPositionColor = (position: Teacher['position']) => {
+    switch (position) {
+      case 'Head Teacher': return 'bg-primary text-primary-foreground';
+      case 'Deputy Head': return 'bg-secondary text-secondary-foreground';
+      case 'Senior Teacher': return 'bg-success text-success-foreground';
       default: return 'bg-muted text-muted-foreground';
     }
   };
@@ -107,16 +95,16 @@ export default function Students() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-success bg-clip-text text-transparent">
-            Student Management
+            Teacher Management
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage student records and academic information
+            Manage teaching staff and their assignments
           </p>
         </div>
         <Button asChild className="bg-gradient-to-r from-primary to-success">
-          <Link to="/students/add">
+          <Link to="/teachers/add">
             <UserPlus className="h-4 w-4 mr-2" />
-            Add Student
+            Add Teacher
           </Link>
         </Button>
       </div>
@@ -125,42 +113,45 @@ export default function Students() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-0 shadow-soft">
           <CardContent className="p-6">
-            <div className="text-2xl font-bold">{students.length}</div>
-            <p className="text-xs text-muted-foreground">Total Students</p>
+            <div className="text-2xl font-bold">{teachers.length}</div>
+            <p className="text-xs text-muted-foreground">Total Teachers</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-soft">
           <CardContent className="p-6">
             <div className="text-2xl font-bold">
-              {students.filter(s => s.status === 'Active').length}
+              {teachers.filter(t => t.status === 'Active').length}
             </div>
-            <p className="text-xs text-muted-foreground">Active Students</p>
+            <p className="text-xs text-muted-foreground">Active Teachers</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-soft">
           <CardContent className="p-6">
             <div className="text-2xl font-bold">
-              {students.filter(s => s.gender === 'Male').length}
+              {teachers.filter(t => t.position === 'Senior Teacher').length}
             </div>
-            <p className="text-xs text-muted-foreground">Male Students</p>
+            <p className="text-xs text-muted-foreground">Senior Teachers</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-soft">
           <CardContent className="p-6">
             <div className="text-2xl font-bold">
-              {students.filter(s => s.gender === 'Female').length}
+              {teachers.filter(t => ['Head Teacher', 'Deputy Head'].includes(t.position)).length}
             </div>
-            <p className="text-xs text-muted-foreground">Female Students</p>
+            <p className="text-xs text-muted-foreground">Leadership</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Search and Filter */}
+      {/* Teachers Table */}
       <Card className="border-0 shadow-soft">
         <CardHeader>
-          <CardTitle>Student Records</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <GraduationCap className="h-5 w-5" />
+            Teaching Staff
+          </CardTitle>
           <CardDescription>
-            Search and manage student information
+            Manage teacher profiles and subject assignments
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -168,7 +159,7 @@ export default function Students() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Search by name or enrollment number..."
+                placeholder="Search by name, employee number, or subject..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
@@ -176,68 +167,87 @@ export default function Students() {
             </div>
           </div>
 
-          {/* Students Table */}
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Enrollment Number</TableHead>
-                  <TableHead>Level</TableHead>
-                  <TableHead>Gender</TableHead>
+                  <TableHead>Teacher</TableHead>
+                  <TableHead>Employee #</TableHead>
+                  <TableHead>Position</TableHead>
+                  <TableHead>Subjects</TableHead>
+                  <TableHead>Contact</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Performance</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredStudents.length === 0 ? (
+                {filteredTeachers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? "No students found matching your search." : "No students registered yet."}
+                      {searchTerm ? "No teachers found matching your search." : "No teachers registered yet."}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredStudents.map((student) => (
-                    <TableRow key={student.id}>
+                  filteredTeachers.map((teacher) => (
+                    <TableRow key={teacher.id}>
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {student.firstName} {student.surname}
+                            {teacher.firstName} {teacher.surname}
                           </div>
-                          {student.otherNames && (
-                            <div className="text-sm text-muted-foreground">
-                              {student.otherNames}
-                            </div>
-                          )}
+                          <div className="text-sm text-muted-foreground">
+                            {teacher.qualification}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
-                        {student.enrolmentNumber}
+                        {teacher.employeeNumber}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">Level {student.currentLevel}</Badge>
-                      </TableCell>
-                      <TableCell>{student.gender}</TableCell>
-                      <TableCell>
-                        <Badge className={getStatusColor(student.status)}>
-                          {student.status}
+                        <Badge className={getPositionColor(teacher.position)}>
+                          {teacher.position}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge className={getPerformanceColor(student.overallPerformance)}>
-                          {student.overallPerformance}
+                        <div className="flex flex-wrap gap-1">
+                          {teacher.subjects.slice(0, 2).map((subject, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {subject}
+                            </Badge>
+                          ))}
+                          {teacher.subjects.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{teacher.subjects.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3 w-3" />
+                            {teacher.contactNumber}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-3 w-3" />
+                            {teacher.email}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(teacher.status)}>
+                          {teacher.status}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Button variant="ghost" size="icon" asChild>
-                            <Link to={`/students/${student.id}`}>
+                            <Link to={`/teachers/${teacher.id}`}>
                               <Eye className="h-4 w-4" />
                             </Link>
                           </Button>
                           <Button variant="ghost" size="icon" asChild>
-                            <Link to={`/students/${student.id}/edit`}>
+                            <Link to={`/teachers/${teacher.id}/edit`}>
                               <Edit className="h-4 w-4" />
                             </Link>
                           </Button>
@@ -249,16 +259,16 @@ export default function Students() {
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Student Record</AlertDialogTitle>
+                                <AlertDialogTitle>Delete Teacher Record</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to delete {student.firstName} {student.surname}'s record? 
+                                  Are you sure you want to delete {teacher.firstName} {teacher.surname}'s record? 
                                   This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => handleDeleteStudent(student.id)}
+                                  onClick={() => handleDeleteTeacher(teacher.id)}
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                 >
                                   Delete
