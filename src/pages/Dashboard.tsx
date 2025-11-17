@@ -55,35 +55,41 @@ export default function Dashboard() {
 
       {/* Quick Stats */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-0 shadow-soft bg-gradient-to-br from-card to-card/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-primary" />
+        <Card className="border-2 border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
+            <CardTitle className="text-sm font-semibold text-muted-foreground">Total Students</CardTitle>
+            <div className="h-10 w-10 bg-gradient-to-br from-primary to-primary-light rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+              <Users className="h-5 w-5 text-white" />
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalStudents.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
+          <CardContent className="relative">
+            <div className="text-3xl font-bold">{stats.totalStudents.toLocaleString()}</div>
+            <p className="text-sm text-muted-foreground mt-1">
               {stats.genderStats.male} Male, {stats.genderStats.female} Female
             </p>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-soft bg-gradient-to-br from-card to-card/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+        <Card className="border-2 border-border hover:border-success/50 transition-all duration-300 hover:shadow-lg overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-success/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
+            <CardTitle className="text-sm font-semibold text-muted-foreground">
               {userLevel === 'school' ? 'Teachers' : 'Schools'}
             </CardTitle>
-            {userLevel === 'school' ? (
-              <GraduationCap className="h-4 w-4 text-success" />
-            ) : (
-              <School className="h-4 w-4 text-success" />
-            )}
+            <div className="h-10 w-10 bg-gradient-to-br from-success to-success-light rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+              {userLevel === 'school' ? (
+                <GraduationCap className="h-5 w-5 text-white" />
+              ) : (
+                <School className="h-5 w-5 text-white" />
+              )}
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+          <CardContent className="relative">
+            <div className="text-3xl font-bold">
               {userLevel === 'school' ? stats.totalTeachers : stats.totalSchools}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground mt-1">
               {userLevel === 'school' 
                 ? `${stats.teacherStats?.active || 0} Active Teachers`
                 : 'Educational Institutions'
@@ -92,7 +98,8 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-soft bg-gradient-to-br from-card to-card/50">
+        <Card className="border-2 border-border hover:border-accent-foreground/50 transition-all duration-300 hover:shadow-lg overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-accent/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               {userLevel === 'school' ? 'Classes' : 'Active Students'}
