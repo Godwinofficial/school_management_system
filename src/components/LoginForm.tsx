@@ -52,21 +52,42 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-success/5 flex">
+    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-success/10 flex">
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         <img 
           src={heroImage} 
           alt="Students learning with modern technology in a Zambian school" 
           className="object-cover w-full h-full"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/80 to-success/80 flex items-center justify-center">
-          <div className="text-center text-white p-8">
-            <h2 className="text-4xl font-bold mb-4">
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/90 to-success/90 flex items-center justify-center">
+          <div className="text-center text-white p-8 space-y-6">
+            <div className="flex justify-center">
+              <div className="p-4 bg-white/20 backdrop-blur-sm rounded-2xl">
+                <GraduationCap className="h-16 w-16" />
+              </div>
+            </div>
+            <h2 className="text-5xl font-bold">
               National Education Registry
             </h2>
-            <p className="text-xl opacity-90">
+            <p className="text-xl opacity-95 max-w-md mx-auto leading-relaxed">
               Empowering Zambian Education Through Digital Innovation
             </p>
+            <div className="flex items-center justify-center gap-8 pt-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold">12,500+</div>
+                <div className="text-sm opacity-90">Schools</div>
+              </div>
+              <div className="h-12 w-px bg-white/30"></div>
+              <div className="text-center">
+                <div className="text-3xl font-bold">4.2M+</div>
+                <div className="text-sm opacity-90">Students</div>
+              </div>
+              <div className="h-12 w-px bg-white/30"></div>
+              <div className="text-center">
+                <div className="text-3xl font-bold">180K+</div>
+                <div className="text-sm opacity-90">Teachers</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -75,23 +96,23 @@ export function LoginForm() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="p-3 bg-gradient-to-br from-primary to-success rounded-2xl text-white">
+              <div className="p-3 bg-gradient-to-br from-primary to-primary-light rounded-2xl text-white shadow-lg">
                 <GraduationCap className="h-8 w-8" />
               </div>
             </div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-success bg-clip-text text-transparent">
               Education Registry
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-muted-foreground mt-2 text-base">
               National Education Registration Scheme
             </p>
           </div>
 
-          <Card className="border-0 shadow-medium">
+          <Card className="border-2 shadow-lg">
             <CardHeader className="text-center pb-4">
-              <CardTitle className="text-xl">Sign In</CardTitle>
-              <CardDescription>
-                Access your educational management dashboard
+              <CardTitle className="text-2xl">Welcome Back</CardTitle>
+              <CardDescription className="text-base">
+                Sign in to access your educational management dashboard
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -114,15 +114,15 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className={`${collapsed ? "w-16" : "w-64"} border-r`} collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border p-6">
+    <Sidebar className={`${collapsed ? "w-16" : "w-64"} border-r-2`} collapsible="icon">
+      <SidebarHeader className="border-b-2 border-sidebar-border p-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-primary to-success rounded-lg text-white">
+          <div className="p-2 bg-gradient-to-br from-primary to-success rounded-xl text-white shadow-md">
             <GraduationCap className="h-6 w-6" />
           </div>
           {!collapsed && (
             <div>
-              <h2 className="text-lg font-semibold text-sidebar-foreground">Education Registry</h2>
+              <h2 className="text-lg font-bold text-sidebar-foreground">Education Registry</h2>
               <p className="text-xs text-sidebar-foreground/70">National System</p>
             </div>
           )}
@@ -171,13 +171,13 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-4">
+      <SidebarFooter className="border-t-2 border-sidebar-border p-4">
         {!collapsed && (
-          <div className="mb-4">
-            <div className="text-sm font-medium text-sidebar-foreground">{user.firstName} {user.lastName}</div>
+          <div className="mb-4 p-3 bg-sidebar-accent/50 rounded-lg">
+            <div className="text-sm font-semibold text-sidebar-foreground">{user.firstName} {user.lastName}</div>
             <div className="text-xs text-sidebar-foreground/70">{user.email}</div>
             {user.school && (
-              <div className="text-xs text-sidebar-foreground/70 mt-1">{user.school.name}</div>
+              <div className="text-xs text-sidebar-foreground/70 mt-1 font-medium">{user.school.name}</div>
             )}
           </div>
         )}
@@ -185,7 +185,7 @@ export function AppSidebar() {
           variant="outline"
           size={collapsed ? "icon" : "sm"}
           onClick={handleLogout}
-          className="w-full border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent"
+          className="w-full border-2 border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent hover:border-primary/50 font-semibold"
         >
           <LogOut className="h-4 w-4" />
           {!collapsed && <span className="ml-2">Logout</span>}
