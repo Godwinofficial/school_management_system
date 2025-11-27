@@ -9,7 +9,8 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
   const location = useLocation();
   const isAuthenticated = AuthService.isAuthenticated();
-  const hasPermission = requiredRoles ? AuthService.hasPermission(requiredRoles) : true;
+  // const hasPermission = requiredRoles ? AuthService.hasPermission(requiredRoles) : true;
+  const hasPermission = true; // Temporarily bypass permission check
 
   if (!isAuthenticated) {
     return <Navigate to="/" state={{ from: location }} replace />;

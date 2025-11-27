@@ -9,6 +9,7 @@ import { AuthService } from "@/lib/auth";
 import { StorageService, School, Student } from "@/lib/storage";
 import { School as SchoolIcon, Search, Filter, MapPin, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { useNavigate } from "react-router-dom";
 
 export default function Schools() {
   const [schools, setSchools] = useState<School[]>([]);
@@ -19,35 +20,36 @@ export default function Schools() {
 
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const allSchools = StorageService.getSchools();
     // Filter schools based on user level
     let filteredByLevel = allSchools;
-    
+
     if (userLevel === 'district' && user?.district) {
       filteredByLevel = allSchools.filter(school => school.district === user.district);
     } else if (userLevel === 'provincial' && user?.province) {
       filteredByLevel = allSchools.filter(school => school.province === user.province);
     }
-    
+
     setSchools(filteredByLevel);
     setFilteredSchools(filteredByLevel);
   }, [user, userLevel]);
 
   useEffect(() => {
     let filtered = schools.filter(school => {
-      const matchesSearch = 
+      const matchesSearch =
         school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         school.centerNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         school.district.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesType = typeFilter === "all" || school.type === typeFilter;
       const matchesDistrict = districtFilter === "all" || school.district === districtFilter;
-      
+
       return matchesSearch && matchesType && matchesDistrict;
     });
-    
+
     setFilteredSchools(filtered);
   }, [schools, searchTerm, typeFilter, districtFilter]);
 
@@ -191,8 +193,8 @@ export default function Schools() {
                 ))}
               </SelectContent>
             </Select>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setSearchTerm("");
                 setTypeFilter("all");
@@ -228,6 +230,7 @@ export default function Schools() {
                   <TableHead>Enrollment</TableHead>
                   <TableHead>Utilization</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -235,7 +238,7 @@ export default function Schools() {
                   const utilization = Math.round((school.totalEnrolment / school.standardCapacity) * 100);
                   const capacityStatus = getCapacityStatus(school);
                   const students = getSchoolStudents(school.id);
-                  
+
                   return (
                     <TableRow key={school.id}>
                       <TableCell>
@@ -247,11 +250,11 @@ export default function Schools() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant={
-                            school.type === 'GRZ' ? 'default' : 
-                            school.type === 'Grant Aided' ? 'secondary' : 
-                            'outline'
+                            school.type === 'GRZ' ? 'default' :
+                              school.type === 'Grant Aided' ? 'secondary' :
+                                'outline'
                           }
                         >
                           {school.type}
@@ -289,6 +292,11 @@ export default function Schools() {
                           {capacityStatus.status}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="sm" onClick={() => navigate(`/schools/${school.id}`)}>
+                          View Details
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -317,8 +325,8 @@ export default function Schools() {
                   <span className="text-sm font-medium">{item.label}</span>
                   <span className="text-sm text-muted-foreground">{item.count} schools</span>
                 </div>
-                <Progress 
-                  value={schools.length > 0 ? (item.count / schools.length) * 100 : 0} 
+                <Progress
+                  value={schools.length > 0 ? (item.count / schools.length) * 100 : 0}
                   className="h-2"
                 />
               </div>
@@ -369,7 +377,7 @@ export default function Schools() {
               const districtSchools = schools.filter(s => s.district === district);
               const districtCapacity = districtSchools.reduce((sum, s) => sum + s.standardCapacity, 0);
               const districtEnrollment = districtSchools.reduce((sum, s) => sum + s.totalEnrolment, 0);
-              
+
               return (
                 <Card key={district} className="border">
                   <CardHeader className="pb-3">
@@ -393,8 +401,8 @@ export default function Schools() {
                         <span>Utilization</span>
                         <span>{districtCapacity > 0 ? Math.round((districtEnrollment / districtCapacity) * 100) : 0}%</span>
                       </div>
-                      <Progress 
-                        value={districtCapacity > 0 ? (districtEnrollment / districtCapacity) * 100 : 0} 
+                      <Progress
+                        value={districtCapacity > 0 ? (districtEnrollment / districtCapacity) * 100 : 0}
                         className="h-2"
                       />
                     </div>

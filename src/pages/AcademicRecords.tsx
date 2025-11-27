@@ -30,17 +30,17 @@ export default function AcademicRecords() {
 
   useEffect(() => {
     let filtered = students.filter(student => {
-      const matchesSearch = 
+      const matchesSearch =
         student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.surname.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.enrolmentNumber.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesLevel = levelFilter === "all" || student.currentLevel.toString() === levelFilter;
       const matchesPerformance = performanceFilter === "all" || student.overallPerformance === performanceFilter;
-      
+
       return matchesSearch && matchesLevel && matchesPerformance;
     });
-    
+
     setFilteredStudents(filtered);
   }, [students, searchTerm, levelFilter, performanceFilter]);
 
@@ -56,6 +56,7 @@ export default function AcademicRecords() {
   };
 
   const getLatestGrades = (student: Student) => {
+    if (!student.academicPerformance) return null;
     const levels = Object.keys(student.academicPerformance).map(Number).sort((a, b) => b - a);
     return levels.length > 0 ? student.academicPerformance[levels[0]] : null;
   };
@@ -169,7 +170,7 @@ export default function AcademicRecords() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Levels</SelectItem>
-                {Array.from({length: 12}, (_, i) => i + 1).map(level => (
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(level => (
                   <SelectItem key={level} value={level.toString()}>
                     Level {level}
                   </SelectItem>
@@ -189,8 +190,8 @@ export default function AcademicRecords() {
                 <SelectItem value="Poor">Poor</SelectItem>
               </SelectContent>
             </Select>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setSearchTerm("");
                 setLevelFilter("all");
@@ -232,7 +233,7 @@ export default function AcademicRecords() {
                 {filteredStudents.map((student) => {
                   const latestGrades = getLatestGrades(student);
                   const gpa = latestGrades ? calculateGPA(latestGrades) : 'N/A';
-                  
+
                   return (
                     <TableRow key={student.id}>
                       <TableCell>
@@ -300,8 +301,8 @@ export default function AcademicRecords() {
                   <span className="text-sm font-medium">{performance}</span>
                   <span className="text-sm text-muted-foreground">{count} students</span>
                 </div>
-                <Progress 
-                  value={students.length > 0 ? (count / students.length) * 100 : 0} 
+                <Progress
+                  value={students.length > 0 ? (count / students.length) * 100 : 0}
                   className="h-2"
                 />
               </div>
@@ -318,17 +319,17 @@ export default function AcademicRecords() {
             {Object.entries(levelStats)
               .sort(([a], [b]) => Number(a) - Number(b))
               .map(([level, count]) => (
-              <div key={level} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Level {level}</span>
-                  <span className="text-sm text-muted-foreground">{count} students</span>
+                <div key={level} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Level {level}</span>
+                    <span className="text-sm text-muted-foreground">{count} students</span>
+                  </div>
+                  <Progress
+                    value={students.length > 0 ? (count / students.length) * 100 : 0}
+                    className="h-2"
+                  />
                 </div>
-                <Progress 
-                  value={students.length > 0 ? (count / students.length) * 100 : 0} 
-                  className="h-2"
-                />
-              </div>
-            ))}
+              ))}
           </CardContent>
         </Card>
       </div>

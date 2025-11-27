@@ -5,8 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthService } from "@/lib/auth";
 import { StorageService } from "@/lib/storage";
-import { BarChart3, TrendingUp, Users, Award, AlertTriangle, Calendar, Target, RefreshCw } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
+import { TrendingUp, Users, Award, AlertTriangle, RefreshCw, Target } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  Legend
+} from 'recharts';
 
 export default function Statistics() {
   const [timeFilter, setTimeFilter] = useState("current");
@@ -16,7 +30,7 @@ export default function Statistics() {
   const userLevel = AuthService.getUserLevel();
 
   const stats = StorageService.getStatistics(
-    userLevel === 'student' ? 'school' : userLevel, 
+    userLevel === 'student' ? 'school' : userLevel,
     userLevel === 'school' || userLevel === 'student' ? user?.school?.id : undefined
   );
 
@@ -27,21 +41,13 @@ export default function Statistics() {
   };
 
   const getTrendData = () => {
-    // Simulate trend data for demonstration
-    return {
-      enrollment: [
-        { period: "Jan", value: stats.totalStudents * 0.85 },
-        { period: "Feb", value: stats.totalStudents * 0.88 },
-        { period: "Mar", value: stats.totalStudents * 0.92 },
-        { period: "Apr", value: stats.totalStudents * 0.95 },
-        { period: "May", value: stats.totalStudents }
-      ],
-      performance: [
-        { period: "Term 1", excellent: stats.performanceStats.excellent * 0.8, good: stats.performanceStats.good * 0.9 },
-        { period: "Term 2", excellent: stats.performanceStats.excellent * 0.9, good: stats.performanceStats.good * 0.95 },
-        { period: "Term 3", excellent: stats.performanceStats.excellent, good: stats.performanceStats.good }
-      ]
-    };
+    return [
+      { name: "Jan", enrollment: Math.round(stats.totalStudents * 0.85), performance: 75 },
+      { name: "Feb", enrollment: Math.round(stats.totalStudents * 0.88), performance: 78 },
+      { name: "Mar", enrollment: Math.round(stats.totalStudents * 0.92), performance: 82 },
+      { name: "Apr", enrollment: Math.round(stats.totalStudents * 0.95), performance: 80 },
+      { name: "May", enrollment: stats.totalStudents, performance: 85 }
+    ];
   };
 
   const trendData = getTrendData();
@@ -53,7 +59,7 @@ export default function Statistics() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'excellent': return 'text-success';
-      case 'good': return 'text-primary';  
+      case 'good': return 'text-primary';
       case 'warning': return 'text-warning';
       case 'danger': return 'text-destructive';
       default: return 'text-muted-foreground';
@@ -71,12 +77,12 @@ export default function Statistics() {
     {
       title: "Academic Excellence",
       value: `${calculatePercentage(stats.performanceStats.excellent + stats.performanceStats.good, stats.totalStudents)}%`,
-      change: "+5.1%", 
+      change: "+5.1%",
       status: "good",
       description: "Students with excellent/good performance"
     },
     {
-      title: "Retention Rate", 
+      title: "Retention Rate",
       value: `${calculatePercentage(stats.totalStudents - stats.statusStats.droppedOut, stats.totalStudents)}%`,
       change: "-0.8%",
       status: "warning",
@@ -86,13 +92,27 @@ export default function Statistics() {
       title: "Special Support",
       value: `${calculatePercentage(stats.specialStats.orphans + stats.specialStats.withDisability, stats.totalStudents)}%`,
       change: "+1.2%",
-      status: "good", 
+      status: "good",
       description: "Students requiring special attention"
     }
   ];
 
+  const genderData = [
+    { name: 'Male', value: stats.genderStats.male },
+    { name: 'Female', value: stats.genderStats.female },
+  ];
+
+  const COLORS = ['#3b82f6', '#ec4899']; // Blue for Male, Pink for Female
+
+  const performanceData = [
+    { name: 'Excellent', value: stats.performanceStats.excellent, color: '#10b981' },
+    { name: 'Good', value: stats.performanceStats.good, color: '#3b82f6' },
+    { name: 'Average', value: stats.performanceStats.average, color: '#f59e0b' },
+    { name: 'Below Avg', value: stats.performanceStats.belowAverage, color: '#ef4444' },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -115,14 +135,15 @@ export default function Statistics() {
               <SelectItem value="annual">Annual</SelectItem>
             </SelectContent>
           </Select>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             onClick={refreshData}
             disabled={refreshing}
+            className="hover:bg-primary/10 transition-colors"
           >
             {refreshing ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
+              <RefreshCw className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
@@ -133,7 +154,10 @@ export default function Statistics() {
       {/* Key Metrics Overview */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {keyMetrics.map((metric, index) => (
-          <Card key={index} className="border-0 shadow-soft bg-gradient-to-br from-card to-card/50">
+          <Card
+            key={index}
+            className={`border-0 shadow-soft bg-gradient-to-br from-card to-card/50 animate-slide-up delay-${index * 100} hover:shadow-lg transition-all duration-300 hover:-translate-y-1`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{metric.title}</CardTitle>
               <TrendingUp className={`h-4 w-4 ${getStatusColor(metric.status)}`} />
@@ -142,7 +166,7 @@ export default function Statistics() {
               <div className="text-2xl font-bold">{metric.value}</div>
               <div className="flex items-center justify-between mt-2">
                 <p className="text-xs text-muted-foreground">{metric.description}</p>
-                <Badge 
+                <Badge
                   variant={metric.change.startsWith('+') ? 'default' : 'destructive'}
                   className="text-xs"
                 >
@@ -157,7 +181,7 @@ export default function Statistics() {
       {/* Detailed Statistics */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Gender Distribution */}
-        <Card className="border-0 shadow-soft">
+        <Card className="border-0 shadow-soft hover:shadow-lg transition-shadow duration-300">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
@@ -165,32 +189,31 @@ export default function Statistics() {
             </CardTitle>
             <CardDescription>Student enrollment by gender</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Male Students</span>
-                <span className="text-sm text-muted-foreground">
-                  {stats.genderStats.male} ({calculatePercentage(stats.genderStats.male, stats.totalStudents)}%)
-                </span>
-              </div>
-              <Progress 
-                value={calculatePercentage(stats.genderStats.male, stats.totalStudents)} 
-                className="h-3"
-              />
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={genderData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {genderData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Female Students</span>
-                <span className="text-sm text-muted-foreground">
-                  {stats.genderStats.female} ({calculatePercentage(stats.genderStats.female, stats.totalStudents)}%)
-                </span>
-              </div>
-              <Progress 
-                value={calculatePercentage(stats.genderStats.female, stats.totalStudents)} 
-                className="h-3"
-              />
-            </div>
-            <div className="mt-4 p-3 bg-muted rounded-lg">
+            <div className="mt-4 text-center">
               <div className="text-sm font-medium">Gender Parity Index</div>
               <div className="text-2xl font-bold text-primary">
                 {stats.genderStats.male > 0 ? (stats.genderStats.female / stats.genderStats.male).toFixed(2) : 'N/A'}
@@ -201,7 +224,7 @@ export default function Statistics() {
         </Card>
 
         {/* Academic Performance Breakdown */}
-        <Card className="border-0 shadow-soft">
+        <Card className="border-0 shadow-soft hover:shadow-lg transition-shadow duration-300">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Award className="h-5 w-5" />
@@ -209,35 +232,66 @@ export default function Statistics() {
             </CardTitle>
             <CardDescription>Performance level distribution</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {Object.entries(stats.performanceStats).map(([level, count]) => (
-              <div key={level} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium capitalize">
-                    {level.replace(/([A-Z])/g, ' $1')}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    {count} ({calculatePercentage(count, stats.totalStudents)}%)
-                  </span>
-                </div>
-                <Progress 
-                  value={calculatePercentage(count, stats.totalStudents)} 
-                  className="h-2"
-                />
-              </div>
-            ))}
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={performanceData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12 }} />
+                  <Tooltip
+                    cursor={{ fill: 'transparent' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
+                    {performanceData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Student Status Analysis */}
-      <Card className="border-0 shadow-soft">
+      {/* Trend Analysis */}
+      <Card className="border-0 shadow-soft hover:shadow-lg transition-shadow duration-300">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            Student Status Analysis
+            <TrendingUp className="h-5 w-5" />
+            Trend Analysis
           </CardTitle>
-          <CardDescription>Comprehensive breakdown of student status and special categories</CardDescription>
+          <CardDescription>Enrollment and performance trends over time</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Tooltip
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend />
+                <Line yAxisId="left" type="monotone" dataKey="enrollment" stroke="#3b82f6" strokeWidth={2} activeDot={{ r: 8 }} name="Enrollment" />
+                <Line yAxisId="right" type="monotone" dataKey="performance" stroke="#10b981" strokeWidth={2} name="Avg Performance (%)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Student Status Analysis */}
+      <Card className="border-0 shadow-soft hover:shadow-lg transition-shadow duration-300">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            Risk Analysis
+          </CardTitle>
+          <CardDescription>Student status and risk indicators</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-6 md:grid-cols-3">
@@ -245,7 +299,7 @@ export default function Statistics() {
             <div className="space-y-4">
               <h4 className="font-medium">Enrollment Status</h4>
               {Object.entries(stats.statusStats).map(([status, count]) => (
-                <div key={status} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div key={status} className="flex items-center justify-between p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors">
                   <span className="text-sm capitalize">{status.replace(/([A-Z])/g, ' $1')}</span>
                   <div className="text-right">
                     <div className="font-bold">{count}</div>
@@ -261,10 +315,10 @@ export default function Statistics() {
             <div className="space-y-4">
               <h4 className="font-medium">Special Categories</h4>
               {Object.entries(stats.specialStats).map(([category, count]) => (
-                <div key={category} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div key={category} className="flex items-center justify-between p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors">
                   <span className="text-sm capitalize">
-                    {category === 'withDisability' ? 'With Disability' : 
-                     category === 'orphans' ? 'Orphans' : category}
+                    {category === 'withDisability' ? 'With Disability' :
+                      category === 'orphans' ? 'Orphans' : category}
                   </span>
                   <div className="text-right">
                     <div className="font-bold">{count}</div>
@@ -283,19 +337,19 @@ export default function Statistics() {
                 Risk Indicators
               </h4>
               <div className="space-y-3">
-                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg hover:bg-destructive/20 transition-colors">
                   <div className="font-medium text-destructive">High Risk</div>
                   <div className="text-sm text-muted-foreground">
                     {stats.statusStats.droppedOut} students dropped out
                   </div>
                 </div>
-                <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
+                <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg hover:bg-warning/20 transition-colors">
                   <div className="font-medium text-warning">Medium Risk</div>
                   <div className="text-sm text-muted-foreground">
                     {stats.performanceStats.poor + stats.performanceStats.belowAverage} underperforming
                   </div>
                 </div>
-                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors">
                   <div className="font-medium text-primary">Attention Needed</div>
                   <div className="text-sm text-muted-foreground">
                     {stats.specialStats.orphans + stats.specialStats.withDisability} need support
@@ -307,75 +361,9 @@ export default function Statistics() {
         </CardContent>
       </Card>
 
-      {/* Trend Analysis */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
-            Trend Analysis
-          </CardTitle>
-          <CardDescription>Historical data trends and projections</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <h4 className="font-medium mb-4">Enrollment Trends</h4>
-              <div className="space-y-3">
-                {trendData.enrollment.map((data, index) => (
-                  <div key={data.period} className="flex items-center justify-between">
-                    <span className="text-sm">{data.period}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 bg-muted rounded-full h-2">
-                        <div 
-                          className="bg-primary h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${(data.value / stats.totalStudents) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-mono w-12 text-right">
-                        {Math.round(data.value)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-medium mb-4">Performance Trends</h4>
-              <div className="space-y-3">
-                {trendData.performance.map((data, index) => (
-                  <div key={data.period} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{data.period}</span>
-                      <span className="text-xs text-muted-foreground">
-                        Excellent: {Math.round(data.excellent)} | Good: {Math.round(data.good)}
-                      </span>
-                    </div>
-                    <div className="flex gap-1">
-                      <div className="flex-1 bg-muted rounded h-2">
-                        <div 
-                          className="bg-success h-2 rounded transition-all duration-300"
-                          style={{ width: `${(data.excellent / stats.totalStudents) * 100}%` }}
-                        />
-                      </div>
-                      <div className="flex-1 bg-muted rounded h-2">
-                        <div 
-                          className="bg-primary h-2 rounded transition-all duration-300"
-                          style={{ width: `${(data.good / stats.totalStudents) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Comparative Analysis */}
       {userLevel !== 'school' && (
-        <Card className="border-0 shadow-soft">
+        <Card className="border-0 shadow-soft hover:shadow-lg transition-shadow duration-300">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5" />
@@ -387,7 +375,7 @@ export default function Statistics() {
           </CardHeader>
           <CardContent>
             <div className="text-center py-8 text-muted-foreground">
-              <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>Comparative analysis data will be available when multiple {userLevel === 'district' ? 'schools' : 'units'} are registered</p>
             </div>
           </CardContent>

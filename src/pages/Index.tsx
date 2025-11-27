@@ -51,11 +51,11 @@ export default function Index() {
       {/* Hero Section */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-success/5" />
-        
+
         <div className="container mx-auto px-4 py-16 relative">
           <div className="flex flex-col items-center text-center space-y-8 max-w-4xl mx-auto">
             <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-primary/10 to-success/10 rounded-full border border-primary/20">
-              <GraduationCap className="h-8 w-8 text-primary" />
+              {/* <GraduationCap className="h-8 w-8 text-primary" /> */}
               <span className="font-bold text-lg text-foreground">National Education Registry</span>
             </div>
 
@@ -68,21 +68,21 @@ export default function Index() {
             </h1>
 
             <p className="text-xl text-muted-foreground max-w-2xl leading-relaxed">
-              Streamline school operations, manage student records, and gain insights with our comprehensive 
+              Streamline school operations, manage student records, and gain insights with our comprehensive
               education management platform designed for Zambian schools.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 onClick={() => navigate('/login')}
                 className="text-base px-8"
               >
                 <Shield className="mr-2 h-5 w-5" />
                 Access Portal
               </Button>
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 variant="outline"
                 onClick={() => navigate('/student-portal')}
                 className="text-base px-8"
@@ -122,8 +122,8 @@ export default function Index() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature, index) => (
-            <Card 
-              key={index} 
+            <Card
+              key={index}
               className="border-2 hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
             >
               <CardHeader>
@@ -148,20 +148,20 @@ export default function Index() {
                 Ready to Transform Your School Management?
               </h2>
               <p className="text-lg text-white/90">
-                Join thousands of schools across Zambia using our platform to streamline operations 
+                Join thousands of schools across Zambia using our platform to streamline operations
                 and improve educational outcomes.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   variant="secondary"
                   onClick={() => navigate('/login')}
                   className="text-base px-8"
                 >
                   Get Started Now
                 </Button>
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   variant="outline"
                   onClick={() => navigate('/login')}
                   className="text-base px-8 border-white/30 hover:bg-white/10 text-white hover:text-white"
@@ -180,7 +180,7 @@ export default function Index() {
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2">
-              <GraduationCap className="h-6 w-6 text-primary" />
+              {/* <GraduationCap className="h-6 w-6 text-primary" /> */}
               <span className="font-bold text-foreground">Education Registry</span>
             </div>
             <div className="text-sm text-muted-foreground">

@@ -1,13 +1,27 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StorageService, Class, Teacher, Student } from "@/lib/storage";
 import { AuthService } from "@/lib/auth";
-import { Search, Plus, Users, BookOpen, User, Edit, Trash2 } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Users,
+  BookOpen,
+  User,
+  Edit,
+  Trash2,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
+  GraduationCap,
+  School,
+  UserPlus
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   AlertDialog,
@@ -29,6 +43,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Classes() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -38,7 +54,12 @@ export default function Classes() {
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [selectedClass, setSelectedClass] = useState<string>("");
-  
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
+  // Filters
+  const [levelFilter, setLevelFilter] = useState<string>("all");
+  const [streamFilter, setStreamFilter] = useState<string>("all");
+
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
 
@@ -47,44 +68,50 @@ export default function Classes() {
     const loadedClasses = StorageService.getClasses(schoolId);
     const loadedTeachers = StorageService.getTeachers(schoolId);
     const loadedStudents = StorageService.getStudents(schoolId);
-    
+
     setClasses(loadedClasses);
     setTeachers(loadedTeachers);
     setStudents(loadedStudents);
-    setFilteredClasses(loadedClasses);
   }, [user?.school?.id, userLevel]);
 
   useEffect(() => {
-    if (searchTerm.trim() === "") {
-      setFilteredClasses(classes);
-    } else {
-      const filtered = classes.filter(cls =>
-        cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cls.level.toString().includes(searchTerm) ||
-        cls.stream.toLowerCase().includes(searchTerm.toLowerCase())
+    let result = classes;
+
+    if (searchTerm.trim() !== "") {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(cls =>
+        cls.name.toLowerCase().includes(term) ||
+        cls.level.toString().includes(term) ||
+        cls.stream.toLowerCase().includes(term)
       );
-      setFilteredClasses(filtered);
     }
-  }, [searchTerm, classes]);
+
+    if (levelFilter !== "all") {
+      result = result.filter(c => c.level.toString() === levelFilter);
+    }
+
+    if (streamFilter !== "all") {
+      result = result.filter(c => c.stream === streamFilter);
+    }
+
+    setFilteredClasses(result);
+  }, [searchTerm, classes, levelFilter, streamFilter]);
 
   const handleDeleteClass = async (classId: string) => {
     try {
-      // First, unassign students from this class
       const studentsInClass = students.filter(s => s.classId === classId);
       studentsInClass.forEach(student => {
         const updatedStudent = { ...student, classId: undefined };
         StorageService.saveStudent(updatedStudent);
       });
-      
+
       StorageService.deleteClass(classId);
       const updatedClasses = classes.filter(c => c.id !== classId);
       setClasses(updatedClasses);
-      setFilteredClasses(updatedClasses);
-      
-      // Refresh students data
+
       const refreshedStudents = StorageService.getStudents(user?.school?.id);
       setStudents(refreshedStudents);
-      
+
       toast({
         title: "Class deleted",
         description: "Class has been successfully deleted and students unassigned.",
@@ -106,14 +133,13 @@ export default function Classes() {
       if (student) {
         const updatedStudent = { ...student, classId: selectedClass };
         StorageService.saveStudent(updatedStudent);
-        
-        // Refresh students data
+
         const refreshedStudents = StorageService.getStudents(user?.school?.id);
         setStudents(refreshedStudents);
-        
+
         setSelectedStudent("");
         setSelectedClass("");
-        
+
         toast({
           title: "Student assigned",
           description: `${student.firstName} ${student.surname} has been assigned to the class.`,
@@ -142,24 +168,28 @@ export default function Classes() {
     return students.filter(s => !s.classId && s.status === 'Active');
   };
 
+  const getInitials = (name: string) => {
+    return name.substring(0, 2).toUpperCase();
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-10">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-success bg-clip-text text-transparent">
-            Class Management
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Classes
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage classes, assign teachers and students
+            Manage class structures, assign teachers, and organize students.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap gap-2">
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline">
-                <Users className="h-4 w-4 mr-2" />
-                Assign Students
+              <Button variant="outline" className="shadow-sm">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Assign Student
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -200,7 +230,7 @@ export default function Classes() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button asChild className="bg-gradient-to-r from-primary to-success">
+          <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
             <Link to="/classes/add">
               <Plus className="h-4 w-4 mr-2" />
               Create Class
@@ -209,217 +239,387 @@ export default function Classes() {
         </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="border-0 shadow-soft">
+      {/* Stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
           <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0 pb-2">
+              <p className="text-sm font-medium text-muted-foreground">Total Classes</p>
+              <School className="h-4 w-4 text-blue-500" />
+            </div>
             <div className="text-2xl font-bold">{classes.length}</div>
-            <p className="text-xs text-muted-foreground">Total Classes</p>
+            <p className="text-xs text-muted-foreground mt-1">Active classes</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-soft">
+        <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
           <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0 pb-2">
+              <p className="text-sm font-medium text-muted-foreground">Students Assigned</p>
+              <Users className="h-4 w-4 text-emerald-500" />
+            </div>
             <div className="text-2xl font-bold">
               {students.filter(s => s.classId).length}
             </div>
-            <p className="text-xs text-muted-foreground">Students Assigned</p>
+            <p className="text-xs text-muted-foreground mt-1">Enrolled in classes</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-soft">
+        <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-orange-500">
           <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0 pb-2">
+              <p className="text-sm font-medium text-muted-foreground">Unassigned</p>
+              <UserPlus className="h-4 w-4 text-orange-500" />
+            </div>
             <div className="text-2xl font-bold">
               {getUnassignedStudents().length}
             </div>
-            <p className="text-xs text-muted-foreground">Unassigned Students</p>
+            <p className="text-xs text-muted-foreground mt-1">Students needing placement</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-soft">
+        <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-purple-500">
           <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0 pb-2">
+              <p className="text-sm font-medium text-muted-foreground">Total Capacity</p>
+              <GraduationCap className="h-4 w-4 text-purple-500" />
+            </div>
             <div className="text-2xl font-bold">
               {classes.reduce((sum, cls) => sum + cls.capacity, 0)}
             </div>
-            <p className="text-xs text-muted-foreground">Total Capacity</p>
+            <p className="text-xs text-muted-foreground mt-1">Student seats available</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Classes Table */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5" />
-            Class List
-          </CardTitle>
+      {/* Main Content */}
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <CardTitle>Class Directory</CardTitle>
+            <div className="flex items-center bg-muted/50 p-1 rounded-lg border">
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-2 lg:px-3"
+                onClick={() => setViewMode('list')}
+              >
+                <List className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">List</span>
+              </Button>
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-2 lg:px-3"
+                onClick={() => setViewMode('grid')}
+              >
+                <LayoutGrid className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Grid</span>
+              </Button>
+            </div>
+          </div>
           <CardDescription>
-            Overview of all classes and their assignments
+            Browse and manage all classes. Use filters to narrow down your search.
           </CardDescription>
         </CardHeader>
+
         <CardContent>
-          <div className="flex items-center gap-4 mb-6">
+          {/* Filters */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Search by class name, level, or stream..."
+                placeholder="Search by class name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
+                className="pl-9 bg-white dark:bg-slate-950"
               />
             </div>
-          </div>
+            <div className="flex flex-wrap gap-2">
+              <Select value={levelFilter} onValueChange={setLevelFilter}>
+                <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
+                  <SelectValue placeholder="Level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Levels</SelectItem>
+                  {[...Array(12)].map((_, i) => (
+                    <SelectItem key={i + 1} value={(i + 1).toString()}>Grade {i + 1}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Class Name</TableHead>
-                  <TableHead>Level</TableHead>
-                  <TableHead>Class Teacher</TableHead>
-                  <TableHead>Students</TableHead>
-                  <TableHead>Capacity</TableHead>
-                  <TableHead>Subjects</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredClasses.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? "No classes found matching your search." : "No classes created yet."}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredClasses.map((cls) => {
-                    const studentsInClass = getStudentsInClass(cls.id);
-                    const utilizationPercentage = Math.round((studentsInClass.length / cls.capacity) * 100);
-                    
-                    return (
-                      <TableRow key={cls.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{cls.name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              Stream {cls.stream}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">Level {cls.level}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{getTeacherName(cls.teacherId)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{studentsInClass.length}</span>
-                            <Badge 
-                              variant={utilizationPercentage > 90 ? "destructive" : utilizationPercentage > 75 ? "secondary" : "default"}
-                              className="text-xs"
-                            >
-                              {utilizationPercentage}%
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono">{cls.capacity}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {cls.subjects.length} subjects
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon" asChild>
-                              <Link to={`/classes/${cls.id}`}>
-                                <BookOpen className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                            <Button variant="ghost" size="icon" asChild>
-                              <Link to={`/classes/${cls.id}/edit`}>
-                                <Edit className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Class</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete {cls.name}? 
-                                    This will unassign all students from this class.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDeleteClass(cls.id)}
-                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+              <Select value={streamFilter} onValueChange={setStreamFilter}>
+                <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
+                  <SelectValue placeholder="Stream" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Streams</SelectItem>
+                  <SelectItem value="A">Stream A</SelectItem>
+                  <SelectItem value="B">Stream B</SelectItem>
+                  <SelectItem value="C">Stream C</SelectItem>
+                  <SelectItem value="D">Stream D</SelectItem>
+                </SelectContent>
+              </Select>
 
-      {/* Unassigned Students Alert */}
-      {getUnassignedStudents().length > 0 && (
-        <Card className="border-warning bg-warning/5">
-          <CardHeader>
-            <CardTitle className="text-warning flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Unassigned Students
-            </CardTitle>
-            <CardDescription>
-              There are {getUnassignedStudents().length} students not assigned to any class
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2">
-              {getUnassignedStudents().slice(0, 5).map((student) => (
-                <div key={student.id} className="flex items-center justify-between p-2 bg-background rounded">
-                  <span className="text-sm">
-                    {student.firstName} {student.surname} - Level {student.currentLevel}
-                  </span>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => setSelectedStudent(student.id)}
-                      >
-                        Assign
-                      </Button>
-                    </DialogTrigger>
-                  </Dialog>
-                </div>
-              ))}
-              {getUnassignedStudents().length > 5 && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  And {getUnassignedStudents().length - 5} more students...
-                </p>
+              {(searchTerm || levelFilter !== 'all' || streamFilter !== 'all') && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setLevelFilter("all");
+                    setStreamFilter("all");
+                  }}
+                  className="px-3"
+                >
+                  Reset
+                </Button>
               )}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+
+          {/* Content */}
+          {filteredClasses.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-slate-50 dark:bg-slate-900/50">
+              <div className="flex justify-center mb-4">
+                <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-full">
+                  <Search className="h-8 w-8 text-muted-foreground" />
+                </div>
+              </div>
+              <h3 className="text-lg font-medium">No classes found</h3>
+              <p className="text-muted-foreground max-w-sm mx-auto mt-2">
+                We couldn't find any classes matching your current filters.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-6"
+                onClick={() => {
+                  setSearchTerm("");
+                  setLevelFilter("all");
+                  setStreamFilter("all");
+                }}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          ) : (
+            <>
+              {viewMode === 'list' ? (
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-900">
+                      <TableRow>
+                        <TableHead className="w-[200px]">Class Name</TableHead>
+                        <TableHead>Level</TableHead>
+                        <TableHead>Teacher</TableHead>
+                        <TableHead>Students</TableHead>
+                        <TableHead>Capacity</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredClasses.map((cls) => {
+                        const studentsInClass = getStudentsInClass(cls.id);
+                        const utilizationPercentage = Math.round((studentsInClass.length / cls.capacity) * 100);
+
+                        return (
+                          <TableRow key={cls.id} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-9 w-9 border">
+                                  <AvatarFallback className="bg-primary/10 text-primary">{getInitials(cls.name)}</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                                    {cls.name}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Stream {cls.stream}
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="font-normal">
+                                Grade {cls.level}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 text-sm">
+                                <User className="h-3 w-3 text-muted-foreground" />
+                                <span>{getTeacherName(cls.teacherId)}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{studentsInClass.length}</span>
+                                <Badge
+                                  variant={utilizationPercentage > 90 ? "destructive" : utilizationPercentage > 75 ? "secondary" : "default"}
+                                  className="text-[10px] h-5 px-1.5"
+                                >
+                                  {utilizationPercentage}%
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {cls.capacity}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <Link to={`/classes/${cls.id}`} className="flex items-center cursor-pointer">
+                                      <BookOpen className="mr-2 h-4 w-4" /> View Details
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <Link to={`/classes/${cls.id}/edit`} className="flex items-center cursor-pointer">
+                                      <Edit className="mr-2 h-4 w-4" /> Edit Class
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                      </DropdownMenuItem>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete Class</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Are you sure you want to delete {cls.name}?
+                                          This will unassign all students from this class.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => handleDeleteClass(cls.id)}
+                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        >
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {filteredClasses.map((cls) => {
+                    const studentsInClass = getStudentsInClass(cls.id);
+                    const utilizationPercentage = Math.round((studentsInClass.length / cls.capacity) * 100);
+
+                    return (
+                      <Card key={cls.id} className="overflow-hidden hover:shadow-md transition-all group">
+                        <div className="h-2 w-full bg-primary/10" />
+                        <CardHeader className="pb-2 pt-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10 border">
+                                <AvatarFallback className="bg-primary/10 text-primary">{getInitials(cls.name)}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <CardTitle className="text-base">
+                                  {cls.name}
+                                </CardTitle>
+                                <CardDescription className="text-xs font-mono mt-0.5">
+                                  Stream {cls.stream}
+                                </CardDescription>
+                              </div>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild>
+                                  <Link to={`/classes/${cls.id}`} className="flex items-center cursor-pointer">
+                                    <BookOpen className="mr-2 h-4 w-4" /> View Details
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                  <Link to={`/classes/${cls.id}/edit`} className="flex items-center cursor-pointer">
+                                    <Edit className="mr-2 h-4 w-4" /> Edit Class
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                    </DropdownMenuItem>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Class</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete {cls.name}?
+                                        This will unassign all students from this class.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => handleDeleteClass(cls.id)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pb-3 text-sm space-y-2">
+                          <div className="grid grid-cols-1 gap-2 text-xs">
+                            <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded flex items-center gap-2">
+                              <User className="h-3 w-3 text-muted-foreground" />
+                              <span className="font-medium truncate">{getTeacherName(cls.teacherId)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-muted-foreground text-xs">Occupancy</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium">{studentsInClass.length}/{cls.capacity}</span>
+                              <Badge
+                                variant={utilizationPercentage > 90 ? "destructive" : utilizationPercentage > 75 ? "secondary" : "default"}
+                                className="text-[10px] h-5 px-1.5"
+                              >
+                                {utilizationPercentage}%
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardContent>
+                        <CardFooter className="pt-0 pb-4">
+                          <Button variant="outline" size="sm" className="w-full text-xs h-8" asChild>
+                            <Link to={`/classes/${cls.id}`}>
+                              View Class
+                            </Link>
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

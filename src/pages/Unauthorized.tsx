@@ -1,34 +1,35 @@
-import { Button } from "@/components/ui/button";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, ArrowLeft } from "lucide-react";
+import { AuthService } from "@/lib/auth";
 
 export default function Unauthorized() {
   const navigate = useNavigate();
+  const user = AuthService.getCurrentUser();
 
+  useEffect(() => {
+    // Automatically redirect to the appropriate dashboard based on user role
+    if (user) {
+      if (user.role === 'student') {
+        navigate('/student', { replace: true });
+      } else if (user.role === 'class_teacher') {
+        navigate('/teacher-dashboard', { replace: true });
+      } else {
+        // For all other roles, try to go to the main dashboard
+        // If they don't have access there either, they'll see this page
+        navigate('/dashboard', { replace: true });
+      }
+    } else {
+      // If no user is logged in, redirect to login
+      navigate('/', { replace: true });
+    }
+  }, [navigate, user]);
+
+  // Show a brief loading state while redirecting
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-destructive/5 via-background to-destructive/5">
-      <div className="text-center max-w-md mx-auto p-8">
-        <div className="p-4 bg-destructive/10 rounded-full w-fit mx-auto mb-6">
-          <Shield className="h-12 w-12 text-destructive" />
-        </div>
-        <h1 className="text-3xl font-bold text-destructive mb-4">Access Denied</h1>
-        <p className="text-muted-foreground mb-6">
-          You don't have permission to access this resource. Please contact your administrator if you believe this is an error.
-        </p>
-        <Button 
-          onClick={() => navigate(-1)}
-          variant="outline"
-          className="mr-2"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Go Back
-        </Button>
-        <Button 
-          onClick={() => navigate('/dashboard')}
-          className="bg-gradient-to-r from-primary to-success"
-        >
-          Dashboard
-        </Button>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary/20">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Redirecting...</p>
       </div>
     </div>
   );
