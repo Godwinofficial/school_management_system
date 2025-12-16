@@ -18,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { StorageService, Student, School } from "@/lib/storage";
+import { StorageService, Student, School, Teacher, Class } from "@/lib/storage";
 import { AuthService } from "@/lib/auth";
 import {
     Search,
@@ -87,15 +87,36 @@ export default function Students() {
     const userLevel = AuthService.getUserLevel();
 
     useEffect(() => {
-        // Load students based on user level
-        const loadedStudents = StorageService.getStudents(
+        // Load students based on user level and role
+        let loadedStudents = StorageService.getStudents(
             userLevel === 'school' ? user?.school?.id : undefined
         );
+
+        // Filter students for regular teachers - only show students in their assigned classes
+        if (user?.role === 'teacher') {
+            const teacher = StorageService.getTeacher(user.id);
+            if (teacher?.assignedClassIds && teacher.assignedClassIds.length > 0) {
+                // Show students only from assigned classes
+                loadedStudents = loadedStudents.filter(student =>
+                    student.classId && teacher.assignedClassIds?.includes(student.classId)
+                );
+            } else {
+                // Show students where teacher is the class teacher
+                const teacherClasses = StorageService.getClasses(user?.school?.id)
+                    .filter(cls => cls.teacherId === teacher?.id)
+                    .map(cls => cls.id);
+                loadedStudents = loadedStudents.filter(student =>
+                    student.classId && teacherClasses.includes(student.classId)
+                );
+            }
+        }
+        // Head Teachers, Deputy Heads, Senior Teachers, and admins see all students
+
         setStudents(loadedStudents);
 
         // Load schools for transfer
         setAvailableSchools(StorageService.getSchools());
-    }, [user?.school?.id, userLevel]);
+    }, [user?.school?.id, user?.role, user?.id, userLevel]);
 
     useEffect(() => {
         // Filter students

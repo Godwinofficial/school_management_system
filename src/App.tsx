@@ -22,6 +22,7 @@ import StudentPortal from "./pages/StudentPortal";
 import StudentDetails from "./pages/StudentDetails";
 import TeacherDetails from "./pages/TeacherDetails";
 import Teachers from "./pages/Teachers";
+import AddTeacher from "./pages/AddTeacher";
 import Classes from "./pages/Classes";
 import AcademicRecords from "./pages/AcademicRecords";
 import Reports from "./pages/Reports";
@@ -46,6 +47,7 @@ import Timetable from "./pages/Timetable";
 import Finance from "./pages/Finance";
 import ParentPortal from "./pages/ParentPortal";
 import Messaging from "./pages/Messaging";
+import ClassRegister from "./pages/ClassRegister";
 
 // Admin Pages
 import AdminSchools from "./pages/admin/AdminSchools";
@@ -75,19 +77,57 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const user = AuthService.getCurrentUser();
   const isStudent = user?.role === 'student';
 
+  // Get dynamic header title based on user context
+  const getHeaderTitle = () => {
+    if (!user) return 'National Education Registry';
+
+    if (user.school) {
+      return user.school.name;
+    }
+
+    if (user.district && user.province) {
+      return `${user.district} District Education Office`;
+    }
+
+    if (user.province) {
+      return `${user.province} Provincial Education Office`;
+    }
+
+    if (user.role === 'super_admin') {
+      return 'System Administration';
+    }
+
+    // National level roles
+    const nationalRoles = ['permanent_secretary', 'director_examinations', 'director_curriculum',
+      'director_planning', 'director_social_welfare', 'director_finance',
+      'director_special_education'];
+    if (nationalRoles.includes(user.role)) {
+      return 'Ministry of Education - National Office';
+    }
+
+    return 'National Education Registry';
+  };
+
   if (isStudent) {
     return <>{children}</>;
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={true}>
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />
-            <h1 className="text-lg font-semibold">National Education Registry</h1>
+            <div className="flex flex-col">
+              <h1 className="text-lg font-semibold">{getHeaderTitle()}</h1>
+              {user?.school && (
+                <p className="text-xs text-muted-foreground">
+                  {user.school.type} School • {user.school.district}, {user.school.province}
+                </p>
+              )}
+            </div>
           </div>
         </header>
         <div className="flex-1 flex flex-col gap-4 p-4 pt-0">
@@ -145,7 +185,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Teacher Dashboard */}
+              {/* Teacher Dash board */}
               <Route path="/teacher-dashboard" element={
                 <ProtectedRoute requiredRoles="class_teacher">
                   <AppLayout>
@@ -154,7 +194,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Admin/Staff Routes */}
+              {/* Admin/Staff R outes */}
               <Route path="/dashboard" element={
                 <ProtectedRoute requiredRoles={[
                   'head_teacher', 'deputy_head', 'career_guidance_teacher',
@@ -269,6 +309,14 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
+              <Route path="/teachers/add" element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <AddTeacher />
+                  </AppLayout>
+                </ProtectedRoute>
+              } />
+
               <Route path="/teachers/:id" element={
                 <ProtectedRoute>
                   <AppLayout>
@@ -280,7 +328,7 @@ const App = () => {
               <Route path="/teachers/:id/edit" element={
                 <ProtectedRoute>
                   <AppLayout>
-                    <AddStudent /> {/* Placeholder for Edit Teacher */}
+                    <AddTeacher />
                   </AppLayout>
                 </ProtectedRoute>
               } />
@@ -293,7 +341,15 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* New Routes */}
+              <Route path="/classes/:id/register" element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ClassRegister />
+                  </AppLayout>
+                </ProtectedRoute>
+              } />
+
+              {/* New R outes */}
               <Route path="/district-stats" element={
                 <ProtectedRoute>
                   <AppLayout>
@@ -350,7 +406,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Attendance & Timetable */}
+              {/* Attendance & Time table */}
               <Route path="/attendance" element={
                 <ProtectedRoute>
                   <AppLayout>
@@ -367,7 +423,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Finance */}
+              {/* Fi nance */}
               <Route path="/finance" element={
                 <ProtectedRoute>
                   <AppLayout>
@@ -376,7 +432,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Parent Portal */}
+              {/* Parent P ortal */}
               <Route path="/parent-portal" element={
                 <ProtectedRoute>
                   <AppLayout>
@@ -385,7 +441,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Messaging */}
+              {/* Mess aging */}
               <Route path="/messaging" element={
                 <ProtectedRoute>
                   <AppLayout>
@@ -394,7 +450,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Super Admin Routes */}
+              {/* Super Admin R outes */}
               <Route path="/admin/dashboard" element={
                 <ProtectedRoute requiredRoles={['super_admin']}>
                   <AppLayout>
@@ -539,7 +595,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              {/* Catch-all route */}
+              {/* Catch-all  route */}
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

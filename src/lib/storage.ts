@@ -26,6 +26,7 @@ export interface Teacher {
   email: string;
   qualification: string;
   subjects: string[];
+  assignedClassIds?: string[]; // Classes where this teacher teaches (as class teacher or subject teacher)
   position: 'Head Teacher' | 'Deputy Head' | 'Senior Teacher' | 'Teacher' | 'Career Guidance' | 'Social Welfare' | 'Accountant' | 'Boarding Teacher';
   dateEmployed: string;
   status: 'Active' | 'On Leave' | 'Transferred' | 'Resigned';

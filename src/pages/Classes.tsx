@@ -20,7 +20,8 @@ import {
   MoreHorizontal,
   GraduationCap,
   School,
-  UserPlus
+  UserPlus,
+  Printer
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -478,6 +479,11 @@ export default function Classes() {
                                       <Edit className="mr-2 h-4 w-4" /> Edit Class
                                     </Link>
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <Link to={`/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
+                                      <Printer className="mr-2 h-4 w-4" /> Print Register
+                                    </Link>
+                                  </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
@@ -552,6 +558,11 @@ export default function Classes() {
                                 <DropdownMenuItem asChild>
                                   <Link to={`/classes/${cls.id}/edit`} className="flex items-center cursor-pointer">
                                     <Edit className="mr-2 h-4 w-4" /> Edit Class
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                  <Link to={`/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
+                                    <Printer className="mr-2 h-4 w-4" /> Print Register
                                   </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
