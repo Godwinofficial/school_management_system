@@ -24,7 +24,7 @@ import {
 
 export default function Reports() {
   const [reportType, setReportType] = useState("enrollment");
-  const [timeRange, setTimeRange] = useState("current");
+  const [timeRange, setTimeRange] = useState("term1");
   const [generating, setGenerating] = useState(false);
 
   const user = AuthService.getCurrentUser();
@@ -45,10 +45,10 @@ export default function Reports() {
   ];
 
   const timeRanges = [
-    { value: "current", label: "Current Term" },
-    { value: "quarterly", label: "Last Quarter" },
-    { value: "annual", label: "Annual Report" },
-    { value: "custom", label: "Custom Range" }
+    { value: "term1", label: "Term One" },
+    { value: "term2", label: "Term Two" },
+    { value: "term3", label: "Term Three" },
+    { value: "annual", label: "Annual Report" }
   ];
 
   const generateReport = async () => {
@@ -382,7 +382,7 @@ export default function Reports() {
             {[
               { name: "Weekly Enrollment Summary", frequency: "Every Monday", next: "2024-12-23" },
               { name: "Monthly Performance Report", frequency: "1st of each month", next: "2025-01-01" },
-              { name: "Quarterly Analytics", frequency: "End of quarter", next: "2025-03-31" }
+              { name: "Termly Analytics", frequency: "End of term", next: "2025-03-31" }
             ].map((schedule, index) => (
               <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30 transition-colors">
                 <div>

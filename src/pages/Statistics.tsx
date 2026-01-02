@@ -131,7 +131,7 @@ export default function Statistics() {
             <SelectContent>
               <SelectItem value="current">Current Term</SelectItem>
               <SelectItem value="monthly">Monthly View</SelectItem>
-              <SelectItem value="quarterly">Quarterly</SelectItem>
+              <SelectItem value="quarterly">Termly</SelectItem>
               <SelectItem value="annual">Annual</SelectItem>
             </SelectContent>
           </Select>

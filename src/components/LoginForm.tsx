@@ -22,7 +22,7 @@ export function LoginForm() {
     {
       quote: "This system has revolutionized how we manage student records. It's efficient, transparent, and easy to use.",
       author: "Sarah Mumba",
-      role: "School Principal, Lusaka"
+      role: "Head Teacher, Lusaka"
     },
     {
       quote: "Tracking national education statistics has never been easier. A true game-changer for our ministry.",
@@ -328,7 +328,7 @@ export function LoginForm() {
                   onClick={() => fillDemo('head')}
                   className="text-xs p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                 >
-                  Principal
+                  Head Teacher
                 </button>
                 <button
                   onClick={() => fillDemo('deputy')}
