@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { StorageService, Class, Teacher, Student } from "@/lib/storage";
+import { supabase } from "@/lib/supabaseClient";
 import { AuthService } from "@/lib/auth";
 import {
   Search,
@@ -13,7 +14,7 @@ import {
   Users,
   BookOpen,
   User,
-  Edit,
+  Edit2,
   Trash2,
   LayoutGrid,
   List,
@@ -23,7 +24,9 @@ import {
   UserPlus,
   Printer
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { SchoolService } from "@/lib/SchoolService";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,37 +46,101 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { toast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+interface ClassData {
+  id: string;
+  name: string;
+  level: number;
+  stream: string;
+  capacity: number;
+  teacher_id?: string;
+  school_id: string;
+}
+
+interface StudentData {
+  id: string;
+  first_name: string;
+  surname: string;
+  class_id?: string;
+  current_grade: number;
+  status: string;
+}
+
+interface TeacherData {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
 
 export default function Classes() {
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<ClassData[]>([]);
+  const [teachers, setTeachers] = useState<TeacherData[]>([]);
+  const [students, setStudents] = useState<StudentData[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
+  const [filteredClasses, setFilteredClasses] = useState<ClassData[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassData | null>(null);
+  const [classForm, setClassForm] = useState({
+    name: "",
+    level: 1,
+    stream: "A",
+    capacity: 40,
+    teacher_id: ""
+  });
+  const [loading, setLoading] = useState(true);
 
   // Filters
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [streamFilter, setStreamFilter] = useState<string>("all");
 
+  const { schoolSlug } = useParams<{ schoolSlug: string }>();
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
+  const { toast } = useToast();
 
   useEffect(() => {
-    const schoolId = userLevel === 'school' ? user?.school?.id : undefined;
-    const loadedClasses = StorageService.getClasses(schoolId);
-    const loadedTeachers = StorageService.getTeachers(schoolId);
-    const loadedStudents = StorageService.getStudents(schoolId);
-
-    setClasses(loadedClasses);
-    setTeachers(loadedTeachers);
-    setStudents(loadedStudents);
+    fetchClassesData();
   }, [user?.school?.id, userLevel]);
+
+  const fetchClassesData = async () => {
+    try {
+      setLoading(true);
+
+      if (userLevel === 'school' && user?.school?.id) {
+        // Fetch classes
+        const { data: classesData } = await supabase
+          .from('classes')
+          .select('*')
+          .eq('school_id', user.school.id);
+
+        // Fetch students
+        const { data: studentsData } = await supabase
+          .from('students')
+          .select('id, first_name, surname, class_id, current_grade, status')
+          .eq('school_id', user.school.id);
+
+        // Fetch teachers/staff from the teachers table
+        const { data: teachersData } = await supabase
+          .from('teachers')
+          .select('id, first_name, last_name')
+          .eq('school_id', user.school.id);
+
+        setClasses(classesData || []);
+        setStudents(studentsData || []);
+        setTeachers(teachersData || []);
+      }
+    } catch (error) {
+      console.error('Error fetching classes data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let result = classes;
@@ -100,52 +167,75 @@ export default function Classes() {
 
   const handleDeleteClass = async (classId: string) => {
     try {
-      const studentsInClass = students.filter(s => s.classId === classId);
-      studentsInClass.forEach(student => {
-        const updatedStudent = { ...student, classId: undefined };
-        StorageService.saveStudent(updatedStudent);
-      });
-
-      StorageService.deleteClass(classId);
-      const updatedClasses = classes.filter(c => c.id !== classId);
-      setClasses(updatedClasses);
-
-      const refreshedStudents = StorageService.getStudents(user?.school?.id);
-      setStudents(refreshedStudents);
-
-      toast({
-        title: "Class deleted",
-        description: "Class has been successfully deleted and students unassigned.",
-      });
+      await SchoolService.deleteClass(classId);
+      await fetchClassesData();
+      toast({ title: "Class Deleted", description: "The class has been removed successfully." });
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete class.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to delete class", variant: "destructive" });
     }
+  };
+
+  const handleCreateClass = async () => {
+    if (!classForm.name) return;
+    try {
+      await SchoolService.createClass({
+        ...classForm,
+        school_id: user!.school!.id
+      });
+      setIsCreateOpen(false);
+      setClassForm({ name: "", level: 1, stream: "A", capacity: 40, teacher_id: "" });
+      fetchClassesData();
+      toast({ title: "Success", description: "New class created successfully" });
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to create class", variant: "destructive" });
+    }
+  };
+
+  const handleUpdateClass = async () => {
+    if (!editingClass) return;
+    try {
+      await SchoolService.updateClass(editingClass.id, classForm);
+      setIsEditOpen(false);
+      setEditingClass(null);
+      fetchClassesData();
+      toast({ title: "Success", description: "Class updated successfully" });
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to update class", variant: "destructive" });
+    }
+  };
+
+  const openEditDialog = (cls: ClassData) => {
+    setEditingClass(cls);
+    setClassForm({
+      name: cls.name,
+      level: cls.level,
+      stream: cls.stream,
+      capacity: cls.capacity,
+      teacher_id: cls.teacher_id || ""
+    });
+    setIsEditOpen(true);
   };
 
   const handleAssignStudent = async () => {
     if (!selectedStudent || !selectedClass) return;
 
     try {
+      await supabase
+        .from('students')
+        .update({ class_id: selectedClass })
+        .eq('id', selectedStudent);
+
+      // Refresh data
+      await fetchClassesData();
+
       const student = students.find(s => s.id === selectedStudent);
-      if (student) {
-        const updatedStudent = { ...student, classId: selectedClass };
-        StorageService.saveStudent(updatedStudent);
+      setSelectedStudent("");
+      setSelectedClass("");
 
-        const refreshedStudents = StorageService.getStudents(user?.school?.id);
-        setStudents(refreshedStudents);
-
-        setSelectedStudent("");
-        setSelectedClass("");
-
-        toast({
-          title: "Student assigned",
-          description: `${student.firstName} ${student.surname} has been assigned to the class.`,
-        });
-      }
+      toast({
+        title: "Student assigned",
+        description: `${student?.first_name} ${student?.surname} has been assigned to the class.`,
+      });
     } catch (error) {
       toast({
         title: "Error",
@@ -158,15 +248,15 @@ export default function Classes() {
   const getTeacherName = (teacherId?: string) => {
     if (!teacherId) return "No teacher assigned";
     const teacher = teachers.find(t => t.id === teacherId);
-    return teacher ? `${teacher.firstName} ${teacher.surname}` : "Unknown teacher";
+    return teacher ? `${teacher.first_name} ${teacher.last_name}` : "Unknown teacher";
   };
 
   const getStudentsInClass = (classId: string) => {
-    return students.filter(s => s.classId === classId);
+    return students.filter(s => s.class_id === classId);
   };
 
   const getUnassignedStudents = () => {
-    return students.filter(s => !s.classId && s.status === 'Active');
+    return students.filter(s => !s.class_id && s.status === 'active');
   };
 
   const getInitials = (name: string) => {
@@ -208,7 +298,7 @@ export default function Classes() {
                   <SelectContent>
                     {getUnassignedStudents().map((student) => (
                       <SelectItem key={student.id} value={student.id}>
-                        {student.firstName} {student.surname} - Level {student.currentLevel}
+                        {student.first_name} {student.surname} - Grade {student.current_grade}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -231,12 +321,90 @@ export default function Classes() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
-            <Link to="/classes/add">
-              <Plus className="h-4 w-4 mr-2" />
-              Create Class
-            </Link>
-          </Button>
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-primary hover:bg-primary/90 shadow-sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Class
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Class</DialogTitle>
+                <DialogDescription>Add a new dynamic grade or stream to your school.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Class Name (e.g. Grade 1A)</Label>
+                  <Input value={classForm.name} onChange={e => setClassForm({ ...classForm, name: e.target.value })} placeholder="Enter name" />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <Label>Grade Level</Label>
+                    <Input type="number" value={classForm.level} onChange={e => setClassForm({ ...classForm, level: parseInt(e.target.value) })} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max Capacity</Label>
+                  <Input type="number" value={classForm.capacity} onChange={e => setClassForm({ ...classForm, capacity: parseInt(e.target.value) })} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Class Teacher</Label>
+                    <Link to={`/${schoolSlug}/teachers/add`} className="text-xs text-primary hover:underline flex items-center">
+                      <Plus className="h-3 w-3 mr-1" /> Add New
+                    </Link>
+                  </div>
+                  <Select value={classForm.teacher_id} onValueChange={v => setClassForm({ ...classForm, teacher_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
+                    <SelectContent>
+                      {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button onClick={handleCreateClass} className="w-full">Create Class</Button>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Class</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Class Name</Label>
+                  <Input value={classForm.name} onChange={e => setClassForm({ ...classForm, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <Label>Grade Level</Label>
+                    <Input type="number" value={classForm.level} onChange={e => setClassForm({ ...classForm, level: parseInt(e.target.value) })} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max Capacity</Label>
+                  <Input type="number" value={classForm.capacity} onChange={e => setClassForm({ ...classForm, capacity: parseInt(e.target.value) })} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Class Teacher</Label>
+                    <Link to={`/${schoolSlug}/teachers/add`} className="text-xs text-primary hover:underline flex items-center">
+                      <Plus className="h-3 w-3 mr-1" /> Add New
+                    </Link>
+                  </div>
+                  <Select value={classForm.teacher_id} onValueChange={v => setClassForm({ ...classForm, teacher_id: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button onClick={handleUpdateClass} className="w-full">Save Changes</Button>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -259,7 +427,7 @@ export default function Classes() {
               <Users className="h-4 w-4 text-emerald-500" />
             </div>
             <div className="text-2xl font-bold">
-              {students.filter(s => s.classId).length}
+              {students.filter(s => s.class_id).length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Enrolled in classes</p>
           </CardContent>
@@ -444,7 +612,7 @@ export default function Classes() {
                             <TableCell>
                               <div className="flex items-center gap-2 text-sm">
                                 <User className="h-3 w-3 text-muted-foreground" />
-                                <span>{getTeacherName(cls.teacherId)}</span>
+                                <span>{getTeacherName(cls.teacher_id)}</span>
                               </div>
                             </TableCell>
                             <TableCell>
@@ -470,17 +638,15 @@ export default function Classes() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem asChild>
-                                    <Link to={`/classes/${cls.id}`} className="flex items-center cursor-pointer">
+                                    <Link to={`/${schoolSlug}/classes/${cls.id}`} className="flex items-center cursor-pointer">
                                       <BookOpen className="mr-2 h-4 w-4" /> View Details
                                     </Link>
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <Link to={`/classes/${cls.id}/edit`} className="flex items-center cursor-pointer">
-                                      <Edit className="mr-2 h-4 w-4" /> Edit Class
-                                    </Link>
+                                  <DropdownMenuItem onSelect={() => openEditDialog(cls)} className="flex items-center cursor-pointer">
+                                    <Edit2 className="mr-2 h-4 w-4" /> Edit Class
                                   </DropdownMenuItem>
                                   <DropdownMenuItem asChild>
-                                    <Link to={`/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
+                                    <Link to={`/${schoolSlug}/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
                                       <Printer className="mr-2 h-4 w-4" /> Print Register
                                     </Link>
                                   </DropdownMenuItem>
@@ -551,17 +717,15 @@ export default function Classes() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem asChild>
-                                  <Link to={`/classes/${cls.id}`} className="flex items-center cursor-pointer">
+                                  <Link to={`/${schoolSlug}/classes/${cls.id}`} className="flex items-center cursor-pointer">
                                     <BookOpen className="mr-2 h-4 w-4" /> View Details
                                   </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                  <Link to={`/classes/${cls.id}/edit`} className="flex items-center cursor-pointer">
-                                    <Edit className="mr-2 h-4 w-4" /> Edit Class
-                                  </Link>
+                                <DropdownMenuItem onSelect={() => openEditDialog(cls)} className="flex items-center cursor-pointer">
+                                  <Edit2 className="mr-2 h-4 w-4" /> Edit Class
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                  <Link to={`/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
+                                  <Link to={`/${schoolSlug}/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
                                     <Printer className="mr-2 h-4 w-4" /> Print Register
                                   </Link>
                                 </DropdownMenuItem>
@@ -599,7 +763,7 @@ export default function Classes() {
                           <div className="grid grid-cols-1 gap-2 text-xs">
                             <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded flex items-center gap-2">
                               <User className="h-3 w-3 text-muted-foreground" />
-                              <span className="font-medium truncate">{getTeacherName(cls.teacherId)}</span>
+                              <span className="font-medium truncate">{getTeacherName(cls.teacher_id)}</span>
                             </div>
                           </div>
                           <div className="flex items-center justify-between pt-1">
@@ -617,7 +781,7 @@ export default function Classes() {
                         </CardContent>
                         <CardFooter className="pt-0 pb-4">
                           <Button variant="outline" size="sm" className="w-full text-xs h-8" asChild>
-                            <Link to={`/classes/${cls.id}`}>
+                            <Link to={`/${schoolSlug}/classes/${cls.id}`}>
                               View Class
                             </Link>
                           </Button>
@@ -630,7 +794,7 @@ export default function Classes() {
             </>
           )}
         </CardContent>
-      </Card>
-    </div>
+      </Card >
+    </div >
   );
 }

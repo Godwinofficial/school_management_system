@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StorageService, Class, Student, AttendanceRecord, Teacher } from "@/lib/storage";
 import { AuthService } from "@/lib/auth";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -40,6 +40,8 @@ export default function Attendance() {
 
     const user = AuthService.getCurrentUser();
     const userLevel = AuthService.getUserLevel();
+    const params = useParams();
+    const schoolSlug = (userLevel === 'school' && user?.school?.slug) ? user.school.slug : (params.schoolSlug || user?.school?.slug);
 
     useEffect(() => {
         const schoolId = userLevel === 'school' ? user?.school?.id : undefined;
@@ -182,7 +184,7 @@ export default function Attendance() {
                 <div className="flex gap-2">
                     {isRealClass(selectedGroupId) && (
                         <Button variant="outline" asChild>
-                            <Link to={`/classes/${selectedGroupId}/register`}>
+                            <Link to={`/${schoolSlug}/classes/${selectedGroupId}/register`}>
                                 <Printer className="mr-2 h-4 w-4" />
                                 Print Register
                             </Link>

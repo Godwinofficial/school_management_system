@@ -117,13 +117,14 @@ export class ExcelService {
                         if (!row['Gender']) {
                             errors.push({ row: rowNumber, field: 'Gender', message: 'Gender is required' });
                         }
-                        if (!row['Grade Level']) {
-                            errors.push({ row: rowNumber, field: 'Grade Level', message: 'Grade Level is required' });
+                        if (!row['Grade'] && !row['Grade Level']) {
+                            errors.push({ row: rowNumber, field: 'Grade', message: 'Grade is required' });
                         }
 
                         // Validate data types and formats
-                        if (row['Grade Level'] && (row['Grade Level'] < 1 || row['Grade Level'] > 12)) {
-                            errors.push({ row: rowNumber, field: 'Grade Level', message: 'Grade Level must be between 1 and 12', value: row['Grade Level'] });
+                        const gradeVal = row['Grade'] || row['Grade Level'];
+                        if (gradeVal && (parseInt(gradeVal) < 1 || parseInt(gradeVal) > 12)) {
+                            errors.push({ row: rowNumber, field: 'Grade', message: 'Grade must be between 1 and 12', value: gradeVal });
                         }
 
                         const gender = row['Gender']?.toString().toUpperCase();
@@ -137,7 +138,7 @@ export class ExcelService {
                         }
 
                         // If no critical errors for this row, add to students array
-                        const hasRequiredFields = row['First Name'] && row['Last Name'] && row['Date of Birth'] && row['Gender'] && row['Grade Level'];
+                        const hasRequiredFields = row['First Name'] && row['Last Name'] && row['Date of Birth'] && row['Gender'] && (row['Grade'] || row['Grade Level']);
                         if (hasRequiredFields) {
                             students.push({
                                 studentId: row['Student ID'] || undefined,
@@ -145,7 +146,7 @@ export class ExcelService {
                                 lastName: row['Last Name'],
                                 dateOfBirth: this.parseDate(row['Date of Birth']),
                                 gender: this.normalizeGender(row['Gender']),
-                                gradeLevel: parseInt(row['Grade Level']),
+                                gradeLevel: parseInt(row['Grade'] || row['Grade Level']),
                                 stream: row['Stream'] || undefined,
                                 guardianName: row['Guardian Name'] || undefined,
                                 guardianPhone: row['Guardian Phone'] || undefined,
@@ -387,17 +388,17 @@ export class ExcelService {
     static downloadStudentTemplate(): void {
         const template = [
             {
-                'Student ID': 'S001',
-                'First Name': 'John',
-                'Last Name': 'Doe',
-                'Date of Birth': '2010-01-15',
+                'Student ID': 'S2024/001',
+                'First Name': 'Peter',
+                'Last Name': 'Phiri',
+                'Date of Birth': '2010-05-15',
                 'Gender': 'M',
-                'Grade Level': 5,
+                'Grade': 7,
                 'Stream': 'A',
-                'Guardian Name': 'Jane Doe',
+                'Guardian Name': 'Sarah Phiri',
                 'Guardian Phone': '+260 97 1234567',
-                'Guardian Email': 'jane.doe@example.com',
-                'Address': '123 Main Street, Lusaka',
+                'Guardian Email': 'sarah.p@example.com',
+                'Address': '123 Kamanga, Lusaka',
                 'Medical Info': 'None',
                 'Enrollment Date': '2024-01-10'
             }

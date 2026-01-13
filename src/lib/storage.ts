@@ -10,6 +10,7 @@ export interface School {
   standardCapacity: number;
   totalEnrolment: number;
   centerNumber: string;
+  slug?: string;
 }
 
 export interface Teacher {
@@ -72,8 +73,13 @@ export interface Student {
   dateOfBirth: string;
   gender: 'Male' | 'Female';
   residentialAddress: string;
+  email?: string;
+  placeOfBirth?: string;
+  nationality?: string;
+  religion?: string;
+  previousSchool?: string;
 
-  // Family Information
+  // Family Information (Traditional)
   father?: {
     firstName: string;
     surname: string;
@@ -98,7 +104,6 @@ export interface Student {
     isDeceased: boolean;
   };
 
-  // Guardian Information
   guardian?: {
     firstName: string;
     surname: string;
@@ -110,10 +115,31 @@ export interface Student {
     contactNumber: string;
   };
 
+  // Unified Family Info (for imports/simplified views)
+  parentGuardian?: {
+    name: string;
+    relationship: string;
+    phoneNumber: string;
+    email: string;
+    address: string;
+    occupation: string;
+  };
+  emergencyContact?: {
+    name: string;
+    relationship: string;
+    phoneNumber: string;
+  };
+
   // Academic Information
   currentLevel: number; // 1-12
-  healthStatus: 'Good' | 'Fair' | 'Poor' | 'Special Needs';
-  academicPerformance: {
+  healthStatus?: 'Good' | 'Fair' | 'Poor' | 'Special Needs' | string;
+  medicalInfo?: {
+    bloodGroup?: string;
+    allergies?: string;
+    chronicConditions?: string;
+    medications?: string;
+  };
+  academicPerformance?: {
     [level: number]: {
       A: number;
       B: number;
@@ -123,9 +149,10 @@ export interface Student {
   overallPerformance: 'Excellent' | 'Good' | 'Average' | 'Below Average' | 'Poor';
   careerPathways: string[];
   specialInformation?: string;
+  documents?: any[];
 
   // Status
-  status: 'Active' | 'Transferred' | 'Dropped Out' | 'Graduated' | 'Deceased';
+  status: 'Active' | 'Transferred' | 'Dropped Out' | 'Graduated' | 'Deceased' | string;
   isOrphan: boolean;
   hasDisability: boolean;
   isMarried: boolean;
@@ -360,7 +387,8 @@ export class StorageService {
           type: 'GRZ',
           standardCapacity: 500,
           totalEnrolment: 480,
-          centerNumber: 'LPS001'
+          centerNumber: 'LPS001',
+          slug: 'lusaka-primary-school-lps001'
         },
         {
           id: 'school_2',
@@ -371,7 +399,8 @@ export class StorageService {
           type: 'Grant Aided',
           standardCapacity: 800,
           totalEnrolment: 750,
-          centerNumber: 'CSS002'
+          centerNumber: 'CSS002',
+          slug: 'chilenje-secondary-school-css002'
         }
       ];
       localStorage.setItem(this.SCHOOLS_KEY, JSON.stringify(sampleSchools));
@@ -552,12 +581,46 @@ export class StorageService {
   // Schools
   static getSchools(): School[] {
     const data = localStorage.getItem(this.SCHOOLS_KEY);
-    return data ? JSON.parse(data) : [];
+    const schools: School[] = data ? JSON.parse(data) : [];
+
+    // Ensure all schools have slugs (poly-fill for old data)
+    return schools.map(s => {
+      if (!s.slug) {
+        const nameSlug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const centerSlug = s.centerNumber ? `-${s.centerNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '';
+        s.slug = `${nameSlug}${centerSlug}`;
+      }
+      return s;
+    });
   }
 
-  static getSchool(id: string): School | null {
+  static getSchool(idOrSlug: string): School | null {
     const schools = this.getSchools();
-    return schools.find(school => school.id === id) || null;
+    return schools.find(school => {
+      if (!idOrSlug) return false;
+      const term = idOrSlug.toLowerCase();
+
+      // Match by ID
+      if (school.id === idOrSlug) return true;
+      // Match by explicit slug
+      if (school.slug === idOrSlug) return true;
+
+      // Match by generated slug (name based)
+      const nameSlug = school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (nameSlug === term) return true;
+
+      // Match by generated slug (name + center number based)
+      const extendedSlug = `${nameSlug}-${school.centerNumber.toLowerCase()}`;
+      if (extendedSlug === term) return true;
+
+      // Loose match: if the search term starts with the name slug (handles variations like -lpu2026 vs -lps001)
+      if (term.startsWith(nameSlug)) return true;
+
+      // Match by center number
+      if (school.centerNumber.toLowerCase() === term) return true;
+
+      return false;
+    }) || null;
   }
 
   static saveSchool(school: School): void {

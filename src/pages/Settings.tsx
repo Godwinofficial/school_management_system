@@ -8,20 +8,22 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { AuthService } from "@/lib/auth";
-import { Settings as SettingsIcon, User, Bell, Shield, Database, Download, Upload, RefreshCw } from "lucide-react";
+import { Settings as SettingsIcon, User, Bell, Shield, Database, Download, Upload, RefreshCw, Layers, Plus, Trash2 } from "lucide-react";
+import { SchoolService } from "@/lib/SchoolService";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [backupInProgress, setBackupInProgress] = useState(false);
   const { toast } = useToast();
-  
+
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
 
   const [userSettings, setUserSettings] = useState({
     firstName: user?.firstName || '',
-    lastName: user?.lastName || '', 
+    lastName: user?.lastName || '',
     email: user?.email || '',
     notifications: {
       email: true,
@@ -49,7 +51,7 @@ export default function Settings() {
       term1End: '2024-04-12',
       term2Start: '2024-05-06',
       term2End: '2024-08-09',
-      term3Start: '2024-09-02', 
+      term3Start: '2024-09-02',
       term3End: '2024-12-06'
     },
     grading: {
@@ -63,9 +65,16 @@ export default function Settings() {
     }
   });
 
+  const [academicConfig, setAcademicConfig] = useState({
+    grades: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+    streams: ['A', 'B', 'C']
+  });
+
+  const [newGrade, setNewGrade] = useState("");
+  const [newStream, setNewStream] = useState("");
+
   const saveSettings = async () => {
     setSaving(true);
-    // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1500));
     setSaving(false);
     toast({
@@ -100,16 +109,70 @@ export default function Settings() {
     input.click();
   };
 
+  const handleBatchCreate = async () => {
+    if (!user?.school?.id) return;
+    setSaving(true);
+    try {
+      // Fetch existing classes to avoid duplicates
+      const existingClasses = await SchoolService.getClasses(user.school.id);
+      const existingMap = new Set(existingClasses.map(c => c.name.toLowerCase()));
+
+      const classesToCreate = [];
+      let skippedCount = 0;
+
+      for (const grade of academicConfig.grades) {
+        for (const stream of academicConfig.streams) {
+          const className = `Grade ${grade}${stream}`;
+
+          if (existingMap.has(className.toLowerCase())) {
+            skippedCount++;
+            continue;
+          }
+
+          classesToCreate.push({
+            school_id: user.school.id,
+            name: className,
+            level: parseInt(grade) || 0,
+            stream: stream,
+            capacity: 40
+          });
+        }
+      }
+
+      if (classesToCreate.length > 0) {
+        await SchoolService.createClasses(classesToCreate);
+        toast({
+          title: "Setup Complete",
+          description: `Successfully created ${classesToCreate.length} new classes. ${skippedCount > 0 ? `Skipped ${skippedCount} existing classes.` : ''}`
+        });
+      } else {
+        toast({
+          title: "Registry Up to Date",
+          description: `All ${skippedCount} selected classes already exist in your school structure.`
+        });
+      }
+
+    } catch (error) {
+      console.error("Batch creation failed:", error);
+      toast({
+        title: "Error",
+        description: "Batch creation failed. Please check your internet connection.",
+        variant: "destructive"
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
+    <div className="space-y-8 pb-10">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-success bg-clip-text text-transparent">
             Settings
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage your account, preferences, and system configuration
+            Manage your account, preferences, and school structure
           </p>
         </div>
         <Badge variant="secondary" className="w-fit">
@@ -117,575 +180,276 @@ export default function Settings() {
         </Badge>
       </div>
 
-      {/* User Profile Settings */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Profile Settings
-          </CardTitle>
-          <CardDescription>
-            Update your personal information and account details
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
-              <Input
-                id="firstName"
-                value={userSettings.firstName}
-                onChange={(e) => setUserSettings({
-                  ...userSettings,
-                  firstName: e.target.value
-                })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
-              <Input
-                id="lastName"
-                value={userSettings.lastName}
-                onChange={(e) => setUserSettings({
-                  ...userSettings,
-                  lastName: e.target.value
-                })}
-              />
-            </div>
+      <Tabs defaultValue="profile" className="space-y-6">
+        <TabsList className="bg-muted/50 p-1 border">
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="structure">School Structure</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
+          <TabsTrigger value="data">Data</TabsTrigger>
+          <TabsTrigger value="privacy">Privacy</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="profile">
+          <div className="grid gap-6">
+            <Card className="border-0 shadow-soft">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Profile Settings
+                </CardTitle>
+                <CardDescription>Update your personal information</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input id="firstName" value={userSettings.firstName} onChange={(e) => setUserSettings({ ...userSettings, firstName: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input id="lastName" value={userSettings.lastName} onChange={(e) => setUserSettings({ ...userSettings, lastName: e.target.value })} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" value={userSettings.email} onChange={(e) => setUserSettings({ ...userSettings, email: e.target.value })} />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-soft">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <SettingsIcon className="h-5 w-5" />
+                  Display Preferences
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Theme</Label>
+                    <Select value={userSettings.preferences.theme} onValueChange={(v) => setUserSettings({ ...userSettings, preferences: { ...userSettings.preferences, theme: v } })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="dark">Dark</SelectItem>
+                        <SelectItem value="system">System</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Language</Label>
+                    <Select value={userSettings.preferences.language} onValueChange={(v) => setUserSettings({ ...userSettings, preferences: { ...userSettings.preferences, language: v } })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="ny">Chichewa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="email">Email Address</Label>
-            <Input
-              id="email"
-              type="email"
-              value={userSettings.email}
-              onChange={(e) => setUserSettings({
-                ...userSettings,
-                email: e.target.value
-              })}
-            />
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <Card className="border-0 shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                Notification Preferences
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Object.entries(userSettings.notifications).map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <div className="capitalize">{key} Notifications</div>
+                  <Switch checked={value} onCheckedChange={(checked) => setUserSettings({ ...userSettings, notifications: { ...userSettings.notifications, [key]: checked } })} />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="structure">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card className="border-0 shadow-soft">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-primary" />
+                  Grade Levels
+                </CardTitle>
+                <CardDescription>Manage available grades in your school</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter grade (e.g. 1)"
+                    value={newGrade}
+                    onChange={e => setNewGrade(e.target.value)}
+                  />
+                  <Button size="icon" onClick={() => {
+                    if (newGrade && !academicConfig.grades.includes(newGrade)) {
+                      setAcademicConfig({ ...academicConfig, grades: [...academicConfig.grades, newGrade].sort((a, b) => parseInt(a) - parseInt(b)) });
+                      setNewGrade("");
+                    }
+                  }}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {academicConfig.grades.map(grade => (
+                    <Badge key={grade} variant="secondary" className="px-3 py-1 gap-2">
+                      Grade {grade}
+                      <Trash2 className="h-3 w-3 cursor-pointer text-muted-foreground hover:text-destructive" onClick={() => setAcademicConfig({ ...academicConfig, grades: academicConfig.grades.filter(g => g !== grade) })} />
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-soft">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-success" />
+                  Streams
+                </CardTitle>
+                <CardDescription>Define how you divide your grade levels</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter stream (e.g. A or Red)"
+                    value={newStream}
+                    onChange={e => setNewStream(e.target.value)}
+                  />
+                  <Button size="icon" onClick={() => {
+                    if (newStream && !academicConfig.streams.includes(newStream)) {
+                      setAcademicConfig({ ...academicConfig, streams: [...academicConfig.streams, newStream] });
+                      setNewStream("");
+                    }
+                  }}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {academicConfig.streams.map(stream => (
+                    <Badge key={stream} variant="outline" className="px-3 py-1 gap-2">
+                      {stream}
+                      <Trash2 className="h-3 w-3 cursor-pointer text-muted-foreground hover:text-destructive" onClick={() => setAcademicConfig({ ...academicConfig, streams: academicConfig.streams.filter(s => s !== stream) })} />
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="md:col-span-2 border-0 shadow-soft bg-primary/5">
+              <CardHeader>
+                <CardTitle>Quick Setup</CardTitle>
+                <CardDescription>Automatically generate your school's class registry based on the grades and streams above.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">This will create {academicConfig.grades.length * academicConfig.streams.length} classes.</p>
+                    <p className="text-xs text-muted-foreground">Classrooms like "Grade 1A", "Grade 1B", etc. will be initialized.</p>
+                  </div>
+                  <Button
+                    onClick={handleBatchCreate}
+                    disabled={saving || academicConfig.grades.length === 0}
+                    variant="default"
+                  >
+                    {saving ? "Creating..." : "Generate Classrooms"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+        </TabsContent>
 
-          {user?.school && (
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="space-y-2">
-                <div className="font-medium">Institution Information</div>
-                <div className="text-sm text-muted-foreground">
-                  <div><strong>School:</strong> {user.school.name}</div>
-                  <div><strong>Type:</strong> {user.school.type}</div>
-                  <div><strong>Location:</strong> {user.school.district}, {user.school.province}</div>
-                  <div><strong>Center Number:</strong> {user.school.centerNumber}</div>
+        <TabsContent value="system">
+          <Card className="border-0 shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                System Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Academic Year</Label>
+                  <Input value={systemSettings.schoolYear} onChange={(e) => setSystemSettings({ ...systemSettings, schoolYear: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Grading System</Label>
+                  <Select value={systemSettings.grading.system} onValueChange={(v) => setSystemSettings({ ...systemSettings, grading: { ...systemSettings.grading, system: v } })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ABC">A, B, C System</SelectItem>
+                      <SelectItem value="numeric">Numeric (0-100)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* Notification Settings */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Notification Preferences
-          </CardTitle>
-          <CardDescription>
-            Control how and when you receive notifications
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Email Notifications</div>
-                <div className="text-sm text-muted-foreground">
-                  Receive notifications via email
-                </div>
-              </div>
-              <Switch
-                checked={userSettings.notifications.email}
-                onCheckedChange={(checked) => setUserSettings({
-                  ...userSettings,
-                  notifications: { ...userSettings.notifications, email: checked }
-                })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Browser Notifications</div>
-                <div className="text-sm text-muted-foreground">
-                  Show notifications in your browser
-                </div>
-              </div>
-              <Switch
-                checked={userSettings.notifications.browser}
-                onCheckedChange={(checked) => setUserSettings({
-                  ...userSettings,
-                  notifications: { ...userSettings.notifications, browser: checked }
-                })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Report Notifications</div>
-                <div className="text-sm text-muted-foreground">
-                  Get notified when reports are ready
-                </div>
-              </div>
-              <Switch
-                checked={userSettings.notifications.reports}
-                onCheckedChange={(checked) => setUserSettings({
-                  ...userSettings,
-                  notifications: { ...userSettings.notifications, reports: checked }
-                })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Deadline Reminders</div>
-                <div className="text-sm text-muted-foreground">
-                  Reminders for important deadlines
-                </div>
-              </div>
-              <Switch
-                checked={userSettings.notifications.deadlines}
-                onCheckedChange={(checked) => setUserSettings({
-                  ...userSettings,
-                  notifications: { ...userSettings.notifications, deadlines: checked }
-                })}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Display Preferences */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <SettingsIcon className="h-5 w-5" />
-            Display Preferences
-          </CardTitle>
-          <CardDescription>
-            Customize your interface and display options
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Theme</Label>
-              <Select 
-                value={userSettings.preferences.theme}
-                onValueChange={(value) => setUserSettings({
-                  ...userSettings,
-                  preferences: { ...userSettings.preferences, theme: value }
-                })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="system">System</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Language</Label>
-              <Select 
-                value={userSettings.preferences.language}
-                onValueChange={(value) => setUserSettings({
-                  ...userSettings,
-                  preferences: { ...userSettings.preferences, language: value }
-                })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="ny">Chichewa</SelectItem>
-                  <SelectItem value="bem">Bemba</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Date Format</Label>
-              <Select 
-                value={userSettings.preferences.dateFormat}
-                onValueChange={(value) => setUserSettings({
-                  ...userSettings,
-                  preferences: { ...userSettings.preferences, dateFormat: value }
-                })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
-                  <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
-                  <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Time Format</Label>
-              <Select 
-                value={userSettings.preferences.timeFormat}
-                onValueChange={(value) => setUserSettings({
-                  ...userSettings,
-                  preferences: { ...userSettings.preferences, timeFormat: value }
-                })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="12h">12 Hour</SelectItem>
-                  <SelectItem value="24h">24 Hour</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* System Settings (Admin Only) */}
-      {(userLevel === 'national' || userLevel === 'provincial' || userLevel === 'district') && (
-        <Card className="border-0 shadow-soft">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              System Configuration
-            </CardTitle>
-            <CardDescription>
-              Administrative settings for system management
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Academic Year</Label>
-                <Input
-                  value={systemSettings.schoolYear}
-                  onChange={(e) => setSystemSettings({
-                    ...systemSettings,
-                    schoolYear: e.target.value
-                  })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Grading System</Label>
-                <Select 
-                  value={systemSettings.grading.system}
-                  onValueChange={(value) => setSystemSettings({
-                    ...systemSettings,
-                    grading: { ...systemSettings.grading, system: value }
-                  })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ABC">A, B, C System</SelectItem>
-                    <SelectItem value="numeric">Numeric (0-100)</SelectItem>
-                    <SelectItem value="gpa">GPA (0-4.0)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <h4 className="font-medium mb-4">Term Dates</h4>
+        <TabsContent value="data">
+          <Card className="border-0 shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Data Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
               <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-3">
-                  <div className="font-medium text-sm">Term 1</div>
-                  <div className="space-y-2">
-                    <Label>Start Date</Label>
-                    <Input
-                      type="date"
-                      value={systemSettings.termDates.term1Start}
-                      onChange={(e) => setSystemSettings({
-                        ...systemSettings,
-                        termDates: { ...systemSettings.termDates, term1Start: e.target.value }
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>End Date</Label>
-                    <Input
-                      type="date"
-                      value={systemSettings.termDates.term1End}
-                      onChange={(e) => setSystemSettings({
-                        ...systemSettings,
-                        termDates: { ...systemSettings.termDates, term1End: e.target.value }
-                      })}
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="font-medium text-sm">Term 2</div>
-                  <div className="space-y-2">
-                    <Label>Start Date</Label>
-                    <Input
-                      type="date"
-                      value={systemSettings.termDates.term2Start}
-                      onChange={(e) => setSystemSettings({
-                        ...systemSettings,
-                        termDates: { ...systemSettings.termDates, term2Start: e.target.value }
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>End Date</Label>
-                    <Input
-                      type="date"
-                      value={systemSettings.termDates.term2End}
-                      onChange={(e) => setSystemSettings({
-                        ...systemSettings,
-                        termDates: { ...systemSettings.termDates, term2End: e.target.value }
-                      })}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="font-medium text-sm">Term 3</div>
-                  <div className="space-y-2">
-                    <Label>Start Date</Label>
-                    <Input
-                      type="date"
-                      value={systemSettings.termDates.term3Start}
-                      onChange={(e) => setSystemSettings({
-                        ...systemSettings,
-                        termDates: { ...systemSettings.termDates, term3Start: e.target.value }
-                      })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>End Date</Label>
-                    <Input
-                      type="date"
-                      value={systemSettings.termDates.term3End}
-                      onChange={(e) => setSystemSettings({
-                        ...systemSettings,
-                        termDates: { ...systemSettings.termDates, term3End: e.target.value }
-                      })}
-                    />
-                  </div>
-                </div>
+                <Button variant="outline" onClick={exportData} disabled={backupInProgress}>
+                  {backupInProgress ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                  Export Data
+                </Button>
+                <Button variant="outline" onClick={importData}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import Data
+                </Button>
+                <Button variant="outline" onClick={exportData} disabled={backupInProgress}>
+                  <Database className="h-4 w-4 mr-2" />
+                  Create Backup
+                </Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* Data Management */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
-            Data Management
-          </CardTitle>
-          <CardDescription>
-            Export, import, and backup your data
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <Button 
-              variant="outline" 
-              onClick={exportData}
-              disabled={backupInProgress}
-              className="flex items-center gap-2"
-            >
-              {backupInProgress ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              Export Data
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              onClick={importData}
-              className="flex items-center gap-2"
-            >
-              <Upload className="h-4 w-4" />
-              Import Data
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              onClick={exportData}
-              disabled={backupInProgress}
-              className="flex items-center gap-2"
-            >
-              {backupInProgress ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Database className="h-4 w-4" />
-              )}
-              Create Backup
-            </Button>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Auto Backup</div>
-                <div className="text-sm text-muted-foreground">
-                  Automatically backup data weekly
+        <TabsContent value="privacy">
+          <Card className="border-0 shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Privacy Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Object.entries(userSettings.privacy).map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <div className="capitalize">{key.replace(/([A-Z])/g, ' $1')}</div>
+                  <Switch checked={value} onCheckedChange={(checked) => setUserSettings({ ...userSettings, privacy: { ...userSettings.privacy, [key]: checked } })} />
                 </div>
-              </div>
-              <Switch
-                checked={systemSettings.backup.autoBackup}
-                onCheckedChange={(checked) => setSystemSettings({
-                  ...systemSettings,
-                  backup: { ...systemSettings.backup, autoBackup: checked }
-                })}
-              />
-            </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Backup Frequency</Label>
-                <Select 
-                  value={systemSettings.backup.frequency}
-                  onValueChange={(value) => setSystemSettings({
-                    ...systemSettings,
-                    backup: { ...systemSettings.backup, frequency: value }
-                  })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Retention Period</Label>
-                <Select 
-                  value={systemSettings.backup.retention}
-                  onValueChange={(value) => setSystemSettings({
-                    ...systemSettings,
-                    backup: { ...systemSettings.backup, retention: value }
-                  })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1month">1 Month</SelectItem>
-                    <SelectItem value="3months">3 Months</SelectItem>
-                    <SelectItem value="6months">6 Months</SelectItem>
-                    <SelectItem value="1year">1 Year</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Privacy Settings */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Privacy & Security
-          </CardTitle>
-          <CardDescription>
-            Control your privacy and data sharing preferences
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Profile Visibility</div>
-                <div className="text-sm text-muted-foreground">
-                  Make your profile visible to other users
-                </div>
-              </div>
-              <Switch
-                checked={userSettings.privacy.profileVisible}
-                onCheckedChange={(checked) => setUserSettings({
-                  ...userSettings,
-                  privacy: { ...userSettings.privacy, profileVisible: checked }
-                })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Analytics Opt-out</div>
-                <div className="text-sm text-muted-foreground">
-                  Exclude your data from analytics reports
-                </div>
-              </div>
-              <Switch
-                checked={userSettings.privacy.analyticsOptOut}
-                onCheckedChange={(checked) => setUserSettings({
-                  ...userSettings,
-                  privacy: { ...userSettings.privacy, analyticsOptOut: checked }
-                })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Data Sharing</div>
-                <div className="text-sm text-muted-foreground">
-                  Share anonymized data for research purposes
-                </div>
-              </div>
-              <Switch
-                checked={userSettings.privacy.dataSharing}
-                onCheckedChange={(checked) => setUserSettings({
-                  ...userSettings,
-                  privacy: { ...userSettings.privacy, dataSharing: checked }
-                })}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Save Settings */}
       <div className="flex justify-end">
-        <Button 
-          onClick={saveSettings}
-          disabled={saving}
-          size="lg"
-        >
-          {saving ? (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            'Save Settings'
-          )}
+        <Button onClick={saveSettings} disabled={saving} size="lg">
+          {saving ? 'Saving...' : 'Save Settings'}
         </Button>
       </div>
-    </div>
+    </div >
   );
 }

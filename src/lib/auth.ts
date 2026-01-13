@@ -14,11 +14,15 @@ export interface User {
     standardCapacity: number;
     totalEnrolment: number;
     centerNumber: string;
+    slug: string;
   };
   district?: string;
   province?: string;
+  classId?: string;
+  metadata?: any;
   permissions?: UserPermission[];
 }
+
 
 export type UserRole =
   // School Level
@@ -71,40 +75,84 @@ export type UserPermission =
   | 'manage_finance';
 
 export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermission[]> = {
-  head_teacher: ['manage_staff', 'manage_students', 'manage_classes', 'manage_assessments', 'view_reports', 'manage_settings', 'manage_finance'],
-  deputy_head: ['manage_staff', 'manage_students', 'manage_classes', 'manage_assessments', 'view_reports'],
-  senior_teacher: ['manage_students', 'manage_classes', 'manage_assessments', 'view_reports'],
-  class_teacher: ['manage_students', 'manage_assessments', 'view_reports'],
-  // Add others as empty defaults for now
-  career_guidance_teacher: [],
-  social_welfare_teacher: [],
-  house_tutor: [],
-  school_accountant: ['manage_finance'],
-  boarding_teacher: [],
-  district_education_director: [],
-  district_standards_officer: [],
-  district_education_officer: [],
-  district_social_welfare_officer: [],
-  district_planning_officer: [],
-  district_career_officer: [],
-  district_statistical_officer: [],
-  district_accounts_officer: [],
-  provincial_education_officer: [],
-  provincial_standards_officer: [],
-  provincial_social_welfare: [],
-  provincial_planning_officer: [],
-  provincial_career_officer: [],
-  provincial_statistical_officer: [],
-  provincial_accounts_officer: [],
-  super_admin: [],
-  permanent_secretary: [],
-  director_examinations: [],
-  director_curriculum: [],
-  director_planning: [],
-  director_social_welfare: [],
-  director_finance: [],
-  director_special_education: [],
-  student: []
+  // Head Teacher - Super User of the School
+  head_teacher: [
+    'manage_staff',
+    'manage_students',
+    'manage_classes',
+    'manage_assessments',
+    'view_reports',
+    'manage_settings',
+    'manage_finance'
+  ],
+
+  // Deputy Head - Nearly full access, but typically limited in top-level finance/settings changes unless delegated
+  deputy_head: [
+    'manage_staff',
+    'manage_students',
+    'manage_classes',
+    'manage_assessments',
+    'view_reports'
+  ],
+
+  // Senior Teacher - Academic Focus
+  senior_teacher: [
+    'manage_students',
+    'manage_classes',
+    'manage_assessments',
+    'view_reports'
+  ],
+
+  // Class Teacher - Student & Assessment Focus
+  class_teacher: [
+    'manage_students', // Implicitly their own students usually
+    'manage_assessments',
+    'view_reports'
+  ],
+
+  // Specialized Roles (Limited Access)
+  career_guidance_teacher: ['view_reports'], // Need to view student performance to guide
+  social_welfare_teacher: ['view_reports'],  // Need to view student backgrounds/issues
+  school_accountant: ['manage_finance', 'view_reports'], // Finance focus
+  house_tutor: ['manage_students'], // Manage boarding students potentially
+  boarding_teacher: ['manage_students'],
+
+  // District Level
+  district_education_director: ['view_reports'],
+  district_standards_officer: ['view_reports'],
+  district_education_officer: ['view_reports'],
+  district_social_welfare_officer: ['view_reports'],
+  district_planning_officer: ['view_reports'],
+  district_career_officer: ['view_reports'],
+  district_statistical_officer: ['view_reports'],
+  district_accounts_officer: ['view_reports'],
+
+  // Provincial Level
+  provincial_education_officer: ['view_reports'],
+  provincial_standards_officer: ['view_reports'],
+  provincial_social_welfare: ['view_reports'],
+  provincial_planning_officer: ['view_reports'],
+  provincial_career_officer: ['view_reports'],
+  provincial_statistical_officer: ['view_reports'],
+  provincial_accounts_officer: ['view_reports'],
+
+  // System Level
+  super_admin: [
+    'manage_staff', 'manage_students', 'manage_classes',
+    'manage_assessments', 'view_reports', 'manage_settings', 'manage_finance'
+  ],
+
+  // National Level
+  permanent_secretary: ['view_reports'],
+  director_examinations: ['view_reports'],
+  director_curriculum: ['view_reports'],
+  director_planning: ['view_reports'],
+  director_social_welfare: ['view_reports'],
+  director_finance: ['view_reports'],
+  director_special_education: ['view_reports'],
+
+  // Student
+  student: ['view_reports'] // Can view their own reports
 };
 
 export class AuthService {
@@ -130,7 +178,8 @@ export class AuthService {
           ward: 'Ward 1',
           standardCapacity: 500,
           totalEnrolment: 480,
-          centerNumber: 'LPS001'
+          centerNumber: 'LPS001',
+          slug: 'lusaka-primary-school-lps001'
         }
       },
       'teacher@school.zm': {
@@ -149,7 +198,8 @@ export class AuthService {
           ward: 'Ward 1',
           standardCapacity: 500,
           totalEnrolment: 480,
-          centerNumber: 'LPS001'
+          centerNumber: 'LPS001',
+          slug: 'lusaka-primary-school-lps001'
         }
       },
       'district@education.zm': {
@@ -159,6 +209,14 @@ export class AuthService {
         lastName: 'Banda',
         role: 'district_education_director',
         district: 'Lusaka',
+        province: 'Lusaka'
+      },
+      'provincial@education.zm': {
+        id: 'prov_1',
+        email: 'provincial@education.zm',
+        firstName: 'Paul',
+        lastName: 'Zuma',
+        role: 'provincial_education_officer',
         province: 'Lusaka'
       },
       'student@school.zm': {
@@ -176,7 +234,8 @@ export class AuthService {
           ward: 'Ward 1',
           standardCapacity: 500,
           totalEnrolment: 480,
-          centerNumber: 'LPS001'
+          centerNumber: 'LPS001',
+          slug: 'lusaka-primary-school-lps001'
         }
       },
       'admin@system.zm': {
@@ -202,7 +261,8 @@ export class AuthService {
           ward: 'Ward 1',
           standardCapacity: 500,
           totalEnrolment: 480,
-          centerNumber: 'LPS001'
+          centerNumber: 'LPS001',
+          slug: 'lusaka-primary-school-lps001'
         }
       },
       'senior@school.zm': {
@@ -221,7 +281,8 @@ export class AuthService {
           ward: 'Ward 1',
           standardCapacity: 500,
           totalEnrolment: 480,
-          centerNumber: 'LPS001'
+          centerNumber: 'LPS001',
+          slug: 'lusaka-primary-school-lps001'
         }
       }
     };
@@ -231,10 +292,16 @@ export class AuthService {
       const storedUsers = JSON.parse(storedUsersJson);
       let updated = false;
 
-      // Ensure all initial users exist in stored data
+      // Ensure all initial users exist in stored data AND are up to date
       Object.keys(initialUsers).forEach(key => {
-        if (!storedUsers[key]) {
-          storedUsers[key] = initialUsers[key];
+        const stored = storedUsers[key];
+        const initial = initialUsers[key];
+
+        // Check if missing or if school exists but slug is missing (stale data)
+        const isStale = stored && stored.school && !stored.school.slug;
+
+        if (!stored || isStale) {
+          storedUsers[key] = initial;
           updated = true;
         }
       });
@@ -250,17 +317,134 @@ export class AuthService {
     return initialUsers;
   }
 
-  static login(email: string, password: string): User | null {
+  static async login(identifier: string, password: string): Promise<User | null> {
     const users = this.getMockUsers();
-    const user = users[email];
 
-    // In a real app, we would check hashed passwords. 
-    // For this mock, we accept '123456' or 'password123' (for auto-generated accounts)
+    // 1. Try Mock Users (Admins/Teachers) - Identifier is Email
+    const dbUsers = this.getMockUsers();
+    let user = dbUsers[identifier];
+
     if (user && (password === '123456' || password === 'password123')) {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
       window.dispatchEvent(new Event('authChange'));
       return user;
     }
+
+    // 2. Try Supabase Profiles (For Auto-Generated Users)
+    try {
+      const { supabase } = await import('./supabaseClient');
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select(`
+                *,
+                school:schools(id, name, type, province, district, ward, center_number, slug, standard_capacity, total_enrolment)
+            `)
+        .eq('email', identifier)
+        .maybeSingle();
+
+      if (profile) {
+        // Default Password Check for Demo/Dev: '123456'
+        if (password === '123456') {
+          const userObj: User = {
+            id: profile.id,
+            email: profile.email,
+            firstName: profile.first_name || '',
+            lastName: profile.last_name || '',
+            role: profile.role as UserRole,
+            permissions: profile.metadata?.permissions || [],
+            school: profile.school ? {
+              id: profile.school.id,
+              name: profile.school.name,
+              type: profile.school.type,
+              province: profile.school.province,
+              district: profile.school.district,
+              ward: profile.school.ward || '',
+              centerNumber: profile.school.center_number,
+              slug: profile.school.slug || profile.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+              standardCapacity: profile.school.standard_capacity || 500,
+              totalEnrolment: profile.school.total_enrolment || 0
+            } : undefined
+          };
+
+          // Cache this user locally to make subsequent lookups faster/work with sync logic
+          this.registerUser(userObj);
+
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(userObj));
+          window.dispatchEvent(new Event('authChange'));
+          return userObj;
+        }
+      }
+    } catch (err) {
+      console.error("Supabase login check failed", err);
+    }
+
+    // 2. Try Student Login (Identifier is Enrolment Number OR National ID)
+    // Check if identifier looks like enrolment number (contains '/') OR is numeric (National ID)
+    // We will just try to find a student with this identifier in either field
+    if (true) { // Always try if not found in mock users
+      try {
+        // Import dynamically or assume Supabase is available
+        const { supabase } = await import('./supabaseClient');
+
+        // Try by Enrolment Number first
+        let { data: student, error } = await supabase
+          .from('students')
+          .select('*, schools!inner(*)')
+          .eq('enrolment_number', identifier)
+          .maybeSingle();
+
+        // If not found, try National ID
+        if (!student || error) {
+          const result = await supabase
+            .from('students')
+            .select('*, schools!inner(*)')
+            .eq('national_id', identifier) // Check national_id
+            .maybeSingle();
+
+          student = result.data;
+          error = result.error;
+        }
+
+        if (student && !error) {
+          // DEFAULT PASSWORD CHECK: password === identifier (either enrolment or national ID)
+          // In a real app we'd have a password_hash column or a separate auth table
+          // For simplified flow: Password must match the Identifier used OR the Enrolment Number
+
+          const validPass = (password === identifier) || (password === student.enrolment_number) || (password === student.national_id);
+
+          if (validPass) {
+
+            const studentUser: User = {
+              id: student.id,
+              email: student.email || `${student.enrolment_number}@student.place`,
+              firstName: student.first_name,
+              lastName: student.surname,
+              role: 'student',
+              school: {
+                id: student.schools.id,
+                name: student.schools.name,
+                type: student.schools.type,
+                province: student.schools.province,
+                district: student.schools.district,
+                ward: student.schools.ward,
+                standardCapacity: student.schools.standard_capacity,
+                totalEnrolment: student.schools.total_enrolment,
+                centerNumber: student.schools.center_number,
+                slug: student.schools.slug || student.schools.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+              },
+              permissions: DEFAULT_PERMISSIONS.student
+            };
+
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(studentUser));
+            window.dispatchEvent(new Event('authChange'));
+            return studentUser;
+          }
+        }
+      } catch (err) {
+        console.error("Student login error:", err);
+      }
+    }
+
     return null;
   }
 
@@ -291,12 +475,48 @@ export class AuthService {
 
   static getCurrentUser(): User | null {
     const userData = localStorage.getItem(this.STORAGE_KEY);
-    return userData ? JSON.parse(userData) : null;
+    if (!userData) return null;
+
+    const user = JSON.parse(userData);
+
+    // Auto-patch session if school slug is missing OR if it accidentally matches the user's name slug (common data corruption issue)
+    // We detect "bad slugs" by checking if it looks like a person's name slug but should be a school slug
+    // We detect "bad slugs" by checking if it looks like a person's name slug but should be a school slug
+    const nameSlug = user.firstName && user.lastName ? `${user.firstName.toLowerCase()}-${user.lastName.toLowerCase()}` : '';
+    // Only patch if slug is missing OR exactly matches the user's name slug (not just includes it)
+    const isBadSlug = user.school && (!user.school.slug || (nameSlug && user.school.slug === nameSlug));
+
+    if (isBadSlug) {
+      // Regenerate slug from school name, which is more reliable
+      const schoolNameSlug = user.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const centerSlug = user.school.centerNumber ? `-${user.school.centerNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '';
+      user.school.slug = `${schoolNameSlug}${centerSlug}`;
+      // Update storage to persist the fix
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
+    }
+
+    return user;
   }
 
   static logout(): void {
+    // Get the current user before clearing session to extract school slug
+    const user = this.getCurrentUser();
+
+    // Clear the session
     localStorage.removeItem(this.STORAGE_KEY);
     window.dispatchEvent(new Event('authChange'));
+
+    // Redirect to appropriate login page based on user's school
+    if (user?.school?.slug) {
+      // School-based users (teachers, students, etc.) - redirect to their school's login
+      window.location.href = `/login?school=${user.school.slug}`;
+    } else if (user?.role === 'super_admin') {
+      // Super admin - redirect to generic login
+      window.location.href = '/login';
+    } else {
+      // Other users (district, provincial, national) - redirect to generic login
+      window.location.href = '/login';
+    }
   }
 
   static isAuthenticated(): boolean {

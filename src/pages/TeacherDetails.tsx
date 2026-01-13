@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { StorageService, Teacher } from "@/lib/storage";
+import { Teacher } from "@/lib/storage";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,20 +10,48 @@ import { ArrowLeft, Mail, Phone, BookOpen, GraduationCap, Calendar, Edit, MapPin
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function TeacherDetails() {
-    const { id } = useParams<{ id: string }>();
+    const { schoolSlug, id } = useParams<{ schoolSlug: string, id: string }>();
     const navigate = useNavigate();
     const [teacher, setTeacher] = useState<Teacher | null>(null);
 
     useEffect(() => {
-        if (id) {
-            const foundTeacher = StorageService.getTeachers().find(t => t.id === id);
-            if (foundTeacher) {
-                setTeacher(foundTeacher);
-            } else {
-                navigate("/teachers");
+        const fetchTeacher = async () => {
+            if (id) {
+                const { data, error } = await supabase
+                    .from('teachers')
+                    .select('*')
+                    .eq('id', id)
+                    .single();
+
+                if (data) {
+                    // Map snake_case to camelCase
+                    const teacherData: Teacher = {
+                        id: data.id,
+                        schoolId: data.school_id,
+                        employeeNumber: data.employee_number,
+                        firstName: data.first_name,
+                        surname: data.surname,
+                        otherNames: data.other_names,
+                        gender: data.gender,
+                        dateOfBirth: data.date_of_birth,
+                        nationalId: data.national_id,
+                        contactNumber: data.contact_number,
+                        email: data.email,
+                        qualification: data.qualification,
+                        subjects: Array.isArray(data.subjects) ? data.subjects : [],
+                        assignedClassIds: data.assigned_class_ids,
+                        position: data.position,
+                        dateEmployed: data.date_employed,
+                        status: data.status
+                    };
+                    setTeacher(teacherData);
+                } else {
+                    navigate(`/${schoolSlug}/teachers`);
+                }
             }
-        }
-    }, [id, navigate]);
+        };
+        fetchTeacher();
+    }, [id, navigate, schoolSlug]);
 
     if (!teacher) return null;
 
@@ -30,7 +59,7 @@ export default function TeacherDetails() {
         <div className="space-y-6">
             {/* Header */}
             <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => navigate("/teachers")}>
+                <Button variant="ghost" size="icon" onClick={() => navigate(`/${schoolSlug}/teachers`)}>
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div>
@@ -38,7 +67,7 @@ export default function TeacherDetails() {
                     <p className="text-muted-foreground">View and manage teacher information</p>
                 </div>
                 <div className="ml-auto flex gap-2">
-                    <Button variant="outline" onClick={() => navigate(`/teachers/${id}/edit`)}>
+                    <Button variant="outline" onClick={() => navigate(`/${schoolSlug}/teachers/${id}/edit`)}>
                         <Edit className="h-4 w-4 mr-2" />
                         Edit Profile
                     </Button>

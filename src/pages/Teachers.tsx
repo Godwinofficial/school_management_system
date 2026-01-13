@@ -18,8 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StorageService, Teacher } from "@/lib/storage";
 import { AuthService } from "@/lib/auth";
+import { supabase } from "@/lib/supabaseClient";
+import { Teacher } from "@/lib/storage";
 import {
   Search,
   UserPlus,
@@ -40,7 +41,7 @@ import {
   Mail,
   Phone
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,15 +71,46 @@ export default function Teachers() {
   const [genderFilter, setGenderFilter] = useState<string>("all");
   const [positionFilter, setPositionFilter] = useState<string>("all");
 
+  const { schoolSlug } = useParams<{ schoolSlug: string }>();
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
 
   useEffect(() => {
-    const loadedTeachers = StorageService.getTeachers(
-      userLevel === 'school' ? user?.school?.id : undefined
-    );
-    setTeachers(loadedTeachers);
+    fetchTeachers();
   }, [user?.school?.id, userLevel]);
+
+  const fetchTeachers = async () => {
+    if (userLevel === 'school' && user?.school?.id) {
+      const { data, error } = await supabase
+        .from('teachers')
+        .select('*')
+        .eq('school_id', user.school.id);
+
+      if (data) {
+        // Map snake_case from DB to camelCase for the component
+        const mappedTeachers: Teacher[] = data.map((t: any) => ({
+          id: t.id,
+          schoolId: t.school_id,
+          employeeNumber: t.employee_number,
+          firstName: t.first_name,
+          surname: t.surname,
+          otherNames: t.other_names,
+          gender: t.gender,
+          dateOfBirth: t.date_of_birth,
+          nationalId: t.national_id,
+          contactNumber: t.contact_number,
+          email: t.email,
+          qualification: t.qualification,
+          subjects: Array.isArray(t.subjects) ? t.subjects : [],
+          assignedClassIds: t.assigned_class_ids,
+          position: t.position,
+          dateEmployed: t.date_employed,
+          status: t.status
+        }));
+        setTeachers(mappedTeachers);
+      }
+    }
+  };
 
   useEffect(() => {
     let result = teachers;
@@ -110,7 +142,13 @@ export default function Teachers() {
 
   const handleDeleteTeacher = async (teacherId: string) => {
     try {
-      StorageService.deleteTeacher(teacherId);
+      const { error } = await supabase
+        .from('teachers')
+        .delete()
+        .eq('id', teacherId);
+
+      if (error) throw error;
+
       const updatedTeachers = teachers.filter(t => t.id !== teacherId);
       setTeachers(updatedTeachers);
       toast({
@@ -169,7 +207,7 @@ export default function Teachers() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
-            <Link to="/teachers/add">
+            <Link to={`/${schoolSlug}/teachers/add`}>
               <UserPlus className="h-4 w-4 mr-2" />
               Add Teacher
             </Link>
@@ -433,12 +471,12 @@ export default function Teachers() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem asChild>
-                                  <Link to={`/teachers/${teacher.id}`} className="flex items-center cursor-pointer">
+                                  <Link to={`/${schoolSlug}/teachers/${teacher.id}`} className="flex items-center cursor-pointer">
                                     <Eye className="mr-2 h-4 w-4" /> View Details
                                   </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                  <Link to={`/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
+                                  <Link to={`/${schoolSlug}/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
                                     <Edit className="mr-2 h-4 w-4" /> Edit Record
                                   </Link>
                                 </DropdownMenuItem>
@@ -505,12 +543,12 @@ export default function Teachers() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem asChild>
-                                <Link to={`/teachers/${teacher.id}`} className="flex items-center cursor-pointer">
+                                <Link to={`/${schoolSlug}/teachers/${teacher.id}`} className="flex items-center cursor-pointer">
                                   <Eye className="mr-2 h-4 w-4" /> View Details
                                 </Link>
                               </DropdownMenuItem>
                               <DropdownMenuItem asChild>
-                                <Link to={`/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
+                                <Link to={`/${schoolSlug}/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
                                   <Edit className="mr-2 h-4 w-4" /> Edit Record
                                 </Link>
                               </DropdownMenuItem>
@@ -564,7 +602,7 @@ export default function Teachers() {
                       </CardContent>
                       <CardFooter className="pt-0 pb-4">
                         <Button variant="outline" size="sm" className="w-full text-xs h-8" asChild>
-                          <Link to={`/teachers/${teacher.id}`}>
+                          <Link to={`/${schoolSlug}/teachers/${teacher.id}`}>
                             View Profile
                           </Link>
                         </Button>

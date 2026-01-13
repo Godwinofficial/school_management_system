@@ -25,7 +25,7 @@ export function SuperAdminSidebar() {
 
     const handleLogout = () => {
         AuthService.logout();
-        navigate('/');
+        // Redirection is now handled by AuthService.logout()
     };
 
     const menuItems = [

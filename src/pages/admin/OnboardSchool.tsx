@@ -26,9 +26,7 @@ export default function AddSchool() {
         email: '',
         phone: '',
         type: 'GRZ',
-        subscriptionPlanId: '',
-        billingCycle: 'monthly' as 'monthly' | 'annual',
-        startDate: new Date().toISOString().split('T')[0],
+        type: 'GRZ',
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -38,7 +36,7 @@ export default function AddSchool() {
         try {
             // Validate required fields
             if (!formData.name || !formData.centerNumber || !formData.province ||
-                !formData.district || !formData.email || !formData.subscriptionPlanId) {
+                !formData.district || !formData.email) {
                 toast({
                     title: "Validation Error",
                     description: "Please fill in all required fields",
@@ -74,13 +72,13 @@ export default function AddSchool() {
                     ward: formData.ward || undefined,
                 },
                 type: formData.type,
-                subscriptionPlanId: formData.subscriptionPlanId,
-                billingCycle: formData.billingCycle,
-                startDate: formData.startDate,
+                subscriptionPlanId: 'trial',
+                billingCycle: 'monthly',
+                startDate: new Date().toISOString(),
             };
 
             // Create school
-            const school = SchoolService.createSchool(schoolData, currentUser.id);
+            const school = await SchoolService.createSchool(schoolData, currentUser.id);
 
             // Send welcome email (simulated)
             SchoolService.sendWelcomeEmail(school);
@@ -242,86 +240,7 @@ export default function AddSchool() {
                         </CardContent>
                     </Card>
 
-                    {/* Subscription */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Subscription Details</CardTitle>
-                            <CardDescription>Set up the school's subscription plan</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="plan">Subscription Plan *</Label>
-                                    <Select
-                                        value={formData.subscriptionPlanId}
-                                        onValueChange={(value) => setFormData({ ...formData, subscriptionPlanId: value })}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select plan" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {Object.values(SUBSCRIPTION_PLANS).map((plan) => (
-                                                <SelectItem key={plan.id} value={plan.id}>
-                                                    {plan.name} - ${plan.price}/{plan.billingCycle}
-                                                    {plan.id !== 'trial' && ` (${plan.features.maxStudents} students)`}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="billing">Billing Cycle *</Label>
-                                    <Select
-                                        value={formData.billingCycle}
-                                        onValueChange={(value: 'monthly' | 'annual') => setFormData({ ...formData, billingCycle: value })}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select cycle" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="monthly">Monthly</SelectItem>
-                                            <SelectItem value="annual">Annual (Save 20%)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="startDate">Start Date *</Label>
-                                    <Input
-                                        id="startDate"
-                                        type="date"
-                                        required
-                                        value={formData.startDate}
-                                        onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Expiry Date</Label>
-                                    <Input
-                                        type="text"
-                                        value="Auto-calculated based on plan"
-                                        disabled
-                                        className="bg-muted"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Plan Features Preview */}
-                            {formData.subscriptionPlanId && (
-                                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                                    <h4 className="font-medium text-purple-900 mb-2">Plan Features</h4>
-                                    <div className="grid grid-cols-2 gap-2 text-sm text-purple-700">
-                                        <div>Max Students: {SUBSCRIPTION_PLANS[formData.subscriptionPlanId].features.maxStudents}</div>
-                                        <div>Max Teachers: {SUBSCRIPTION_PLANS[formData.subscriptionPlanId].features.maxTeachers}</div>
-                                        <div>Storage: {SUBSCRIPTION_PLANS[formData.subscriptionPlanId].features.storage}</div>
-                                        <div>Modules: {SUBSCRIPTION_PLANS[formData.subscriptionPlanId].features.modules.join(', ')}</div>
-                                    </div>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                    {/* Removed Subscription Details Card */}
 
                     {/* Submit */}
                     <div className="flex gap-4 justify-end">
@@ -362,9 +281,7 @@ export default function AddSchool() {
                         email: '',
                         phone: '',
                         type: 'GRZ',
-                        subscriptionPlanId: '',
-                        billingCycle: 'monthly',
-                        startDate: new Date().toISOString().split('T')[0],
+                        type: 'GRZ',
                     });
                 }}
             />

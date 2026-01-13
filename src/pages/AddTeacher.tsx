@@ -1,23 +1,32 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { StorageService, Teacher, Class } from "@/lib/storage";
-import { AuthService } from "@/lib/auth";
-import { toast } from "sonner";
-import { ArrowLeft, Save } from "lucide-react";
+import { Teacher, Class } from "@/lib/storage";
+import { AuthService, DEFAULT_PERMISSIONS } from "@/lib/auth";
+import { supabase } from "@/lib/supabaseClient";
+import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { SubjectService } from "@/lib/SubjectService";
 
 export default function AddTeacher() {
     const navigate = useNavigate();
+    const { schoolSlug, id } = useParams<{ schoolSlug: string; id?: string }>();
     const user = AuthService.getCurrentUser();
     const userLevel = AuthService.getUserLevel();
+    const { toast } = useToast();
 
+    const canAssignClasses = user?.role === 'head_teacher' || user?.role === 'super_admin';
+    const canManageSubjects = user?.role === 'class_teacher' || user?.role === 'super_admin';
+
+    const [isLoading, setIsLoading] = useState(!!id);
     const [classes, setClasses] = useState<Class[]>([]);
+    const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
     const [formData, setFormData] = useState({
         employeeNumber: "",
         firstName: "",
@@ -38,12 +47,80 @@ export default function AddTeacher() {
 
     const [subjectInput, setSubjectInput] = useState("");
 
+    // Load Existing Teacher for Edit
     useEffect(() => {
-        // Load classes for assignment
-        const loadedClasses = StorageService.getClasses(
-            userLevel === 'school' ? user?.school?.id : undefined
-        );
-        setClasses(loadedClasses);
+        const fetchTeacher = async () => {
+            if (!id) return;
+            try {
+                const { data, error } = await supabase
+                    .from('teachers')
+                    .select('*')
+                    .eq('id', id)
+                    .single();
+
+                if (data) {
+                    setFormData({
+                        employeeNumber: data.employee_number || "",
+                        firstName: data.first_name || "",
+                        surname: data.surname || "",
+                        otherNames: data.other_names || "",
+                        gender: data.gender || "Male",
+                        dateOfBirth: data.date_of_birth || "",
+                        nationalId: data.national_id || "",
+                        contactNumber: data.contact_number || "",
+                        email: data.email || "",
+                        qualification: data.qualification || "",
+                        subjects: data.subjects || [],
+                        assignedClassIds: data.assigned_class_ids || [],
+                        position: data.position || "Teacher",
+                        dateEmployed: data.date_employed || new Date().toISOString().split('T')[0],
+                        status: data.status || "Active"
+                    });
+                }
+            } catch (err) {
+                console.error("Error fetching teacher:", err);
+                toast({ title: "Error", description: "Failed to load teacher data", variant: "destructive" });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchTeacher();
+    }, [id]);
+
+    useEffect(() => {
+        // Auto-generate school email - ONLY ON NEW CREATION to avoid infinite loops and unintended overwrites
+        if (!id && formData.firstName && formData.surname && user?.school?.name) {
+            const schoolPart = (user.school.slug || user.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).split('-')[0];
+            // Format: firstnamesurname@school.edu
+            const newEmail = `${formData.firstName.toLowerCase().replace(/\s+/g, '')}${formData.surname.toLowerCase().replace(/\s+/g, '')}@${schoolPart}.edu`;
+
+            // Only update if the email is actually different from current to avoid loops
+            if (formData.email !== newEmail) {
+                setFormData(prev => ({ ...prev, email: newEmail }));
+            }
+        }
+    }, [formData.firstName, formData.surname, user?.school?.name, user?.school?.slug, formData.email, id]);
+
+    useEffect(() => {
+        // Load classes and subjects for assignment from Supabase
+        const loadInitialData = async () => {
+            if (userLevel === 'school' && user?.school?.id) {
+                // Load Classes
+                const { data: classesData, error: classesError } = await supabase
+                    .from('classes')
+                    .select('*')
+                    .eq('school_id', user.school.id);
+
+                if (classesData) {
+                    setClasses(classesData);
+                }
+
+                // Load Subjects
+                const subjectsData = await SubjectService.getAllSubjects(user.school.id);
+                setAvailableSubjects(subjectsData.map(s => s.name));
+            }
+        };
+        loadInitialData();
     }, [user?.school?.id, userLevel]);
 
     const handleInputChange = (field: string, value: any) => {
@@ -68,6 +145,11 @@ export default function AddTeacher() {
     };
 
     const handleClassToggle = (classId: string) => {
+        if (!canAssignClasses) {
+            toast({ title: 'Permission Denied', description: 'Only head teachers can assign teachers to classes', variant: 'destructive' });
+            return;
+        }
+
         setFormData(prev => ({
             ...prev,
             assignedClassIds: prev.assignedClassIds.includes(classId)
@@ -81,12 +163,12 @@ export default function AddTeacher() {
 
         // Validation
         if (!formData.firstName || !formData.surname || !formData.employeeNumber) {
-            toast.error("Please fill in all required fields");
+            toast({ title: 'Validation Error', description: "Please fill in all required fields", variant: 'destructive' });
             return;
         }
 
         if (!formData.email || !formData.contactNumber) {
-            toast.error("Please provide contact information");
+            toast({ title: 'Validation Error', description: "Please provide contact information", variant: 'destructive' });
             return;
         }
 
@@ -111,45 +193,112 @@ export default function AddTeacher() {
             status: formData.status
         };
 
-        // Save teacher
-        StorageService.saveTeacher(newTeacher);
+        // Save teacher to Supabase
+        const saveTeacher = async () => {
+            const dbPayload: any = {
+                school_id: user?.school?.id || "",
+                employee_number: formData.employeeNumber,
+                first_name: formData.firstName,
+                surname: formData.surname,
+                other_names: formData.otherNames || null,
+                gender: formData.gender,
+                date_of_birth: formData.dateOfBirth,
+                national_id: formData.nationalId,
+                contact_number: formData.contactNumber,
+                email: formData.email,
+                qualification: formData.qualification,
+                subjects: formData.subjects,
+                assigned_class_ids: formData.assignedClassIds.length > 0 ? formData.assignedClassIds : null,
+                position: formData.position,
+                date_employed: formData.dateEmployed,
+                status: formData.status
+            };
 
-        // Update classes where this teacher is assigned
-        formData.assignedClassIds.forEach(classId => {
-            const cls = classes.find(c => c.id === classId);
-            if (cls) {
-                // If teacher is assigned as class teacher for this class
-                if (formData.position === 'Teacher' || formData.position === 'Senior Teacher') {
-                    // Optionally set as class teacher if not already set
-                    if (!cls.teacherId) {
-                        cls.teacherId = newTeacher.id;
-                        StorageService.saveClass(cls);
-                    }
-                }
+            if (id) {
+                dbPayload.id = id;
             }
-        });
 
-        toast.success("Teacher added successfully!");
-        navigate("/teachers");
+            // 1. Create/Update Teacher Record
+            const { data: teacherData, error: teacherError } = await supabase
+                .from('teachers')
+                .upsert([dbPayload])
+                .select()
+                .single();
+
+            if (teacherError) {
+                toast({ title: 'Error', description: "Failed to save teacher: " + teacherError.message, variant: 'destructive' });
+                return;
+            }
+
+            // 2. Create/Update Profile Record for Login
+            const positionToRoleMap: Record<string, string> = {
+                'Head Teacher': 'head_teacher',
+                'Deputy Head': 'deputy_head',
+                'Senior Teacher': 'senior_teacher',
+                'Teacher': 'class_teacher',
+                'Career Guidance': 'career_guidance_teacher',
+                'Social Welfare': 'social_welfare_teacher',
+                'Accountant': 'school_accountant',
+                'Boarding Teacher': 'boarding_teacher'
+            };
+
+            const role = positionToRoleMap[formData.position] || 'class_teacher';
+
+            const profilePayload = {
+                id: teacherData.id, // Keep IDs synced
+                email: formData.email,
+                first_name: formData.firstName,
+                last_name: formData.surname,
+                role: role,
+                school_id: user?.school?.id,
+                province: user?.school?.province,
+                district: user?.school?.district,
+                metadata: {
+                    permissions: (DEFAULT_PERMISSIONS as any)[role] || []
+                }
+            };
+
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .upsert([profilePayload]);
+
+            if (profileError) {
+                console.error("Profile creation failed:", profileError);
+                toast({
+                    title: 'Warning',
+                    description: "Teacher record created, but login profile failed. Please check if email is unique.",
+                    variant: 'destructive'
+                });
+            } else {
+                toast({ title: "Success", description: "Teacher added and login profile created!" });
+                navigate(`/${schoolSlug}/teachers`);
+            }
+        };
+
+        saveTeacher();
     };
 
-    const commonSubjects = [
-        "Mathematics", "English", "Science", "Social Studies",
-        "Physics", "Chemistry", "Biology", "Geography",
-        "History", "Computer Science", "Physical Education",
-        "Art", "Music", "Religious Education"
-    ];
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 pb-10">
             <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => navigate("/teachers")}>
+                <Button variant="ghost" size="icon" onClick={() => navigate(`/${schoolSlug}/teachers`)}>
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Add New Teacher</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">
+                        {id ? 'Edit Teacher' : 'Add New Teacher'}
+                    </h1>
                     <p className="text-muted-foreground mt-1">
-                        Create a new teacher record and assign classes
+                        {id ? `Updating record for ${formData.firstName} ${formData.surname}` : 'Create a new teacher record and assign classes'}
                     </p>
                 </div>
             </div>
@@ -324,19 +473,19 @@ export default function AddTeacher() {
                             <div className="space-y-2">
                                 <Label>Subjects Taught</Label>
                                 <div className="flex gap-2">
-                                    <Select value={subjectInput} onValueChange={setSubjectInput}>
+                                    <Select value={subjectInput} onValueChange={setSubjectInput} disabled={!canManageSubjects}>
                                         <SelectTrigger className="flex-1">
                                             <SelectValue placeholder="Select a subject" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {commonSubjects.map(subject => (
+                                            {availableSubjects.map(subject => (
                                                 <SelectItem key={subject} value={subject}>
                                                     {subject}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <Button type="button" onClick={handleAddSubject}>
+                                    <Button type="button" onClick={handleAddSubject} disabled={!canManageSubjects}>
                                         Add
                                     </Button>
                                 </div>
@@ -352,6 +501,7 @@ export default function AddTeacher() {
                                                     type="button"
                                                     onClick={() => handleRemoveSubject(subject)}
                                                     className="hover:text-destructive"
+                                                    disabled={!canManageSubjects}
                                                 >
                                                     ×
                                                 </button>
@@ -377,36 +527,95 @@ export default function AddTeacher() {
                                     No classes available. Please create classes first.
                                 </p>
                             ) : (
-                                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                                    {classes.map(cls => (
-                                        <div
-                                            key={cls.id}
-                                            className="flex items-center space-x-2 border rounded-lg p-3 hover:bg-accent cursor-pointer"
-                                            onClick={() => handleClassToggle(cls.id)}
-                                        >
-                                            <Checkbox
-                                                id={`class-${cls.id}`}
-                                                checked={formData.assignedClassIds.includes(cls.id)}
-                                                onCheckedChange={() => handleClassToggle(cls.id)}
-                                            />
-                                            <label
-                                                htmlFor={`class-${cls.id}`}
-                                                className="flex-1 cursor-pointer"
-                                            >
-                                                <div className="font-medium">{cls.name}</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    Stream {cls.stream} • Grade {cls.level}
-                                                </div>
-                                            </label>
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <Label>Assign Classes</Label>
+                                            <div className="text-xs text-muted-foreground">Group by grade and choose classes</div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                            {formData.assignedClassIds.length > 0 && (
-                                <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
-                                    <p className="text-sm font-medium">
-                                        {formData.assignedClassIds.length} class(es) selected
-                                    </p>
+                                        <div className="text-sm text-muted-foreground">{formData.assignedClassIds.length} selected</div>
+                                    </div>
+
+                                    {/* Group classes by level */}
+                                    {Object.entries(classes.reduce<Record<string, typeof classes>>((acc, c) => {
+                                        const key = String(c.level || 'Unknown');
+                                        (acc[key] = acc[key] || []).push(c);
+                                        return acc;
+                                    }, {})).sort((a,b)=>Number(a[0]) - Number(b[0])).map(([level, clsGroup]) => {
+                                        const allIds = clsGroup.map(c => c.id);
+                                        const allSelected = allIds.every(id => formData.assignedClassIds.includes(id));
+
+                                        return (
+                                            <div key={level} className="border rounded-md p-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="font-medium">Grade {level}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (!canAssignClasses) return;
+                                                                if (allSelected) {
+                                                                    // remove all
+                                                                    handleInputChange("assignedClassIds", formData.assignedClassIds.filter(id => !allIds.includes(id)));
+                                                                } else {
+                                                                    // add missing
+                                                                    const merged = Array.from(new Set([...formData.assignedClassIds, ...allIds]));
+                                                                    handleInputChange("assignedClassIds", merged);
+                                                                }
+                                                            }}
+                                                            className="text-sm px-2 py-1 rounded border bg-secondary/5"
+                                                            disabled={!canAssignClasses}
+                                                        >
+                                                            {allSelected ? 'Deselect all' : 'Select all'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                                                    {clsGroup.map(c => (
+                                                        <label
+                                                            key={c.id}
+                                                            className={`flex items-center gap-2 p-2 rounded-md border ${canAssignClasses ? 'hover:bg-accent cursor-pointer' : 'opacity-80'}`}
+                                                        >
+                                                            <Checkbox
+                                                                id={`class-${c.id}`}
+                                                                checked={formData.assignedClassIds.includes(c.id)}
+                                                                onCheckedChange={() => canAssignClasses && handleClassToggle(c.id)}
+                                                                disabled={!canAssignClasses}
+                                                            />
+                                                            <div className="flex-1">
+                                                                <div className="font-medium">{c.name}</div>
+                                                                <div className="text-xs text-muted-foreground">Grade {c.level}</div>
+                                                            </div>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+
+                                    {/* Selected chips */}
+                                    {formData.assignedClassIds.length > 0 && (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {formData.assignedClassIds.map(id => {
+                                                const cls = classes.find(c => c.id === id);
+                                                if (!cls) return null;
+                                                return (
+                                                    <div key={id} className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                                                        <span>{cls.name} (G{cls.level})</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleClassToggle(id)}
+                                                            className="hover:text-destructive"
+                                                            disabled={!canAssignClasses}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </CardContent>
@@ -417,7 +626,7 @@ export default function AddTeacher() {
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={() => navigate("/teachers")}
+                            onClick={() => navigate(`/${schoolSlug}/teachers`)}
                         >
                             Cancel
                         </Button>

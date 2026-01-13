@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   GraduationCap,
   Home,
@@ -8,6 +8,7 @@ import {
   Settings,
   School,
   FileText,
+  FileCheck,
   TrendingUp,
   Shield,
   BookOpen,
@@ -36,55 +37,61 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { AuthService, UserRole } from "@/lib/auth";
-import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
-const getMenuItems = (userRole: UserRole, userLevel: string) => {
+const getMenuItems = (userRole: UserRole, userLevel: string, schoolSlug?: string) => {
+  const p = (path: string) => schoolSlug ? `/${schoolSlug}${path}` : path;
+
   const baseItems = [
-    { title: "Dashboard", url: "/dashboard", icon: Home },
+    { title: "Dashboard", url: p("/dashboard"), icon: Home },
   ];
 
   // Enhanced menu for Head Teacher and Deputy Head
   if (userRole === 'head_teacher' || userRole === 'deputy_head') {
     const items = [...baseItems];
-    items.push({ title: "Students", url: "/students", icon: Users });
-    items.push({ title: "Classes", url: "/classes", icon: BookOpen });
-    items.push({ title: "Academic Records", url: "/academic-records", icon: Award });
-    items.push({ title: "Reports", url: "/reports", icon: FileText });
-    items.push({ title: "Statistics", url: "/statistics", icon: BarChart3 });
-    items.push({ title: "Attendance", url: "/attendance", icon: ClipboardCheck });
-    items.push({ title: "Timetable", url: "/timetable", icon: Clock });
-    items.push({ title: "Messaging", url: "/messaging", icon: MessageSquare });
+    items.push({ title: "Teachers", url: p("/teachers"), icon: GraduationCap });
+    items.push({ title: "Students", url: p("/students"), icon: Users });
+    items.push({ title: "Classes", url: p("/classes"), icon: BookOpen });
+    items.push({ title: "Academic Records", url: p("/academic-records"), icon: Award });
+    items.push({ title: "Reports", url: p("/reports"), icon: FileText });
+    items.push({ title: "Statistics", url: p("/statistics"), icon: BarChart3 });
+    items.push({ title: "Attendance", url: p("/attendance"), icon: ClipboardCheck });
+    items.push({ title: "Timetable", url: p("/timetable"), icon: Clock });
+    items.push({ title: "Subjects", url: p("/subjects"), icon: BookOpen });
+    items.push({ title: "Messaging", url: p("/messaging"), icon: MessageSquare });
     return items;
   }
 
   if (userLevel === 'school') {
     const items = [...baseItems];
     if (AuthService.hasPermission(['manage_students', 'view_reports'])) {
-      items.push({ title: "Students", url: "/students", icon: Users });
+      items.push({ title: "Students", url: p("/students"), icon: Users });
     }
     if (AuthService.hasPermission('manage_students')) {
-      items.push({ title: "Add Student", url: "/students/add", icon: UserPlus });
+      items.push({ title: "Add Student", url: p("/students/add"), icon: UserPlus });
     }
     if (AuthService.hasPermission('manage_staff')) {
-      items.push({ title: "Teachers", url: "/teachers", icon: GraduationCap });
+      items.push({ title: "Teachers", url: p("/teachers"), icon: GraduationCap });
     }
     if (AuthService.hasPermission(['manage_classes', 'manage_students'])) {
-      items.push({ title: "Classes", url: "/classes", icon: BookOpen });
+      items.push({ title: "Classes", url: p("/classes"), icon: BookOpen });
     }
-    items.push({ title: "Attendance", url: "/attendance", icon: ClipboardCheck });
-    items.push({ title: "Timetable", url: "/timetable", icon: Clock });
+    items.push({ title: "Attendance", url: p("/attendance"), icon: ClipboardCheck });
+    items.push({ title: "Timetable", url: p("/timetable"), icon: Clock });
     if (AuthService.hasPermission('manage_assessments')) {
-      items.push({ title: "Academic Records", url: "/academic-records", icon: Award });
+      items.push({ title: "Academic Records", url: p("/academic-records"), icon: Award });
+    }
+    if (AuthService.hasPermission('manage_assessments')) {
+      items.push({ title: "Results Entry", url: p("/results-entry"), icon: FileCheck });
     }
     if (AuthService.hasPermission('manage_finance')) {
-      items.push({ title: "Finance", url: "/finance", icon: DollarSign });
+      items.push({ title: "Finance", url: p("/finance"), icon: DollarSign });
     }
     if (AuthService.hasPermission('view_reports')) {
-      items.push({ title: "Reports", url: "/reports", icon: FileText });
-      items.push({ title: "Statistics", url: "/statistics", icon: BarChart3 });
+      items.push({ title: "Reports", url: p("/reports"), icon: FileText });
+      items.push({ title: "Statistics", url: p("/statistics"), icon: BarChart3 });
     }
-    items.push({ title: "Messaging", url: "/messaging", icon: MessageSquare });
+    items.push({ title: "Messaging", url: p("/messaging"), icon: MessageSquare });
     return items;
   }
 
@@ -130,27 +137,54 @@ export function RegularSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const navigate = useNavigate();
+  const params = useParams(); // Get URL parameters
 
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
 
   if (!user) return null;
 
-  const menuItems = getMenuItems(user.role, userLevel);
+  // Use the slug from the URL if present (sticky navigation), otherwise fallback to user's default school slug
+  // This ensures that if we are viewing a specific school context, the sidebar links stay within that context.
+  // For school-level users, prioritize their actual school slug to prevent incorrect slugs (like user names) from persisting.
+  // PRIORITY: URL Parameter > Valid stored slug > Generated slug
+  // We prioritize the URL parameter because the user might have manually corrected the URL,
+  // or we might be visiting a specific school page that differs from the possibly-stale user profile.
+  let currentSchoolSlug = params.schoolSlug;
 
+  if (!currentSchoolSlug && user.school) {
+    // Fallback to stored slug, but verify it's not the user's name (common bug)
+    const firstName = user.firstName || '';
+    const lastName = user.lastName || '';
+    const badSlug = firstName && lastName ? `${firstName.toLowerCase()}-${lastName.toLowerCase()}` : null;
+
+    if (user.school.slug && user.school.slug !== badSlug) {
+      currentSchoolSlug = user.school.slug;
+    } else {
+      // Auto-generate if missing or bad
+      const schoolName = user.school.name || 'school';
+      const nameSlug = schoolName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const centerSlug = user.school.centerNumber ? `-${user.school.centerNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '';
+      currentSchoolSlug = `${nameSlug}${centerSlug}`;
+    }
+  }
+
+  /* Helper for nav class names */
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+      "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200",
       isActive
         ? "bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25"
-        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground hover:shadow-md"
+        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground hover:shadow-md"
     );
 
   const handleLogout = () => {
     AuthService.logout();
-    navigate('/');
+    // Redirection is now handled by AuthService.logout()
   };
 
+  const menuItems = getMenuItems(user.role, userLevel, currentSchoolSlug);
+  /* Helper to format role name */
   const getRoleDisplayName = (role: UserRole): string => {
     return role.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
@@ -162,7 +196,7 @@ export function RegularSidebar() {
       side="left"
       variant="inset"
       className={cn(
-        "border-r bg-gradient-to-b from-sidebar to-sidebar/95 backdrop-blur-xl transition-all duration-300",
+        "border-r bg-sidebar transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
       collapsible="icon"
@@ -182,7 +216,7 @@ export function RegularSidebar() {
                 <h2 className="text-base font-bold text-sidebar-foreground truncate">
                   {user.school ? user.school.name : 'Education Registry'}
                 </h2>
-                <p className="text-xs text-sidebar-foreground/60 truncate">
+                <p className="text-xs text-sidebar-foreground truncate font-semibold">
                   {user.school
                     ? `${user.school.type} School`
                     : user.district
@@ -218,7 +252,7 @@ export function RegularSidebar() {
         {/* Main Navigation */}
         <SidebarGroup>
           {!collapsed && (
-            <SidebarGroupLabel className="px-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2">
+            <SidebarGroupLabel className="px-3 text-xs font-bold text-sidebar-foreground uppercase tracking-wider mb-2">
               {getRoleDisplayName(user.role)}
             </SidebarGroupLabel>
           )}
@@ -246,7 +280,7 @@ export function RegularSidebar() {
         {/* Settings */}
         <SidebarGroup>
           {!collapsed && (
-            <SidebarGroupLabel className="px-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2">
+            <SidebarGroupLabel className="px-3 text-xs font-bold text-sidebar-foreground uppercase tracking-wider mb-2">
               Account
             </SidebarGroupLabel>
           )}
@@ -254,22 +288,23 @@ export function RegularSidebar() {
             <SidebarMenu className="space-y-1">
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <NavLink to="/settings" className={getNavCls}>
-                    <Settings className={cn(
-                      "h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-90",
-                      collapsed && "mx-auto"
-                    )} />
+                  <NavLink to={user.school?.slug ? `/${user.school.slug}/settings` : "/settings"} className={getNavCls}>
+                    < Settings className={
+                      cn(
+                        "h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-90",
+                        collapsed && "mx-auto"
+                      )} />
                     {!collapsed && <span className="truncate">Settings</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
+                  </NavLink >
+                </SidebarMenuButton >
+              </SidebarMenuItem >
+            </SidebarMenu >
+          </SidebarGroupContent >
+        </SidebarGroup >
+      </SidebarContent >
 
       {/* Footer */}
-      <SidebarFooter className="border-t border-sidebar-border/50 p-3 space-y-3">
+      < SidebarFooter className="border-t border-sidebar-border/50 p-3 space-y-3" >
         {!collapsed && (
           <div className="px-3 py-2.5 bg-sidebar-accent/50 rounded-xl backdrop-blur-sm border border-sidebar-border/30">
             <div className="flex items-center gap-3">
@@ -277,10 +312,10 @@ export function RegularSidebar() {
                 {user.firstName.charAt(0)}{user.lastName.charAt(0)}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-sidebar-foreground truncate">
+                <div className="text-sm font-bold text-sidebar-foreground truncate">
                   {user.firstName} {user.lastName}
                 </div>
-                <div className="text-xs text-sidebar-foreground/60 truncate">
+                <div className="text-xs text-sidebar-foreground truncate font-semibold">
                   {user.email}
                 </div>
               </div>
@@ -299,7 +334,7 @@ export function RegularSidebar() {
           <LogOut className={cn("h-4 w-4", !collapsed && "mr-2")} />
           {!collapsed && <span>Logout</span>}
         </Button>
-      </SidebarFooter>
-    </Sidebar>
+      </SidebarFooter >
+    </Sidebar >
   );
 }

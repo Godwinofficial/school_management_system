@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,21 +7,112 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { StorageService, Student } from "@/lib/storage";
+import { Student } from "@/lib/storage";
+import { StudentService } from "@/lib/StudentService";
 import { AuthService } from "@/lib/auth";
 import { toast } from "@/hooks/use-toast";
-import { UserPlus, Save } from "lucide-react";
+import { UserPlus, Save, Loader2 } from "lucide-react";
+import { SchoolService } from "@/lib/SchoolService";
+import { useEffect } from "react";
 
 export default function AddStudent() {
   const navigate = useNavigate();
+  const { id } = useParams();
   const user = AuthService.getCurrentUser();
   const [isLoading, setIsLoading] = useState(false);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [isClassesLoading, setIsClassesLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchClasses() {
+      if (!user?.school?.id) return;
+      try {
+        const data = await SchoolService.getClasses(user.school.id);
+        // Sort classes by level then stream
+        const sortedData = [...data].sort((a, b) => {
+          if (a.level !== b.level) return a.level - b.level;
+          return (a.stream || "").localeCompare(b.stream || "");
+        });
+        setClasses(sortedData);
+      } catch (err) {
+        console.error("Error fetching classes:", err);
+      } finally {
+        setIsClassesLoading(false);
+      }
+    }
+    fetchClasses();
+  }, [user?.school?.id]);
+
+  useEffect(() => {
+    async function fetchStudent() {
+      if (!id) return;
+      try {
+        const student = await StudentService.getStudent(id);
+        if (student) {
+          setFormData({
+            registrationDate: student.registrationDate || '',
+            enrolmentNumber: student.enrolmentNumber || '',
+            classId: student.classId || '',
+            firstName: student.firstName || '',
+            surname: student.surname || '',
+            otherNames: student.otherNames || '',
+            nationalId: student.nationalId || '',
+            examinationNumber: student.examinationNumber || '',
+            dateOfBirth: student.dateOfBirth || '',
+            gender: student.gender || '',
+            residentialAddress: student.residentialAddress || '',
+            email: student.email || '',
+            currentLevel: student.currentLevel || 1,
+            healthStatus: student.healthStatus || '',
+            overallPerformance: student.overallPerformance || '',
+            careerPathways: Array.isArray(student.careerPathways) ? student.careerPathways.join(', ') : '',
+            specialInformation: student.specialInformation || '',
+            status: student.status as any || 'Active',
+            isOrphan: !!student.isOrphan,
+            hasDisability: !!student.hasDisability,
+            isMarried: !!student.isMarried,
+            fatherFirstName: student.father?.firstName || '',
+            fatherSurname: student.father?.surname || '',
+            fatherOtherNames: student.father?.otherNames || '',
+            fatherContactNumber: student.father?.contactNumber || '',
+            fatherResidentialAddress: student.father?.residentialAddress || '',
+            fatherNationality: student.father?.nationality || 'Zambian',
+            fatherNationalId: student.father?.nationalId || '',
+            fatherDateOfBirth: student.father?.dateOfBirth || '',
+            fatherIsDeceased: !!student.father?.isDeceased,
+            motherFirstName: student.mother?.firstName || '',
+            motherSurname: student.mother?.surname || '',
+            motherOtherNames: student.mother?.otherNames || '',
+            motherContactNumber: student.mother?.contactNumber || '',
+            motherResidentialAddress: student.mother?.residentialAddress || '',
+            motherNationality: student.mother?.nationality || 'Zambian',
+            motherNationalId: student.mother?.nationalId || '',
+            motherDateOfBirth: student.mother?.dateOfBirth || '',
+            motherIsDeceased: !!student.mother?.isDeceased,
+            guardianFirstName: student.guardian?.firstName || '',
+            guardianSurname: student.guardian?.surname || '',
+            guardianOtherNames: student.guardian?.otherNames || '',
+            guardianGender: student.guardian?.gender || '',
+            guardianResidentialAddress: student.guardian?.residentialAddress || '',
+            guardianOccupation: student.guardian?.occupation || '',
+            guardianDateOfBirth: student.guardian?.dateOfBirth || '',
+            guardianContactNumber: student.guardian?.contactNumber || '',
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching student:", err);
+        toast({ title: "Error", description: "Failed to load student data", variant: "destructive" });
+      }
+    }
+    fetchStudent();
+  }, [id]);
 
   const [formData, setFormData] = useState({
     // Registration
     registrationDate: new Date().toISOString().split('T')[0],
     enrolmentNumber: '',
-    
+    classId: '',
+
     // Biographical
     firstName: '',
     surname: '',
@@ -31,20 +122,21 @@ export default function AddStudent() {
     dateOfBirth: '',
     gender: '' as 'Male' | 'Female' | '',
     residentialAddress: '',
-    
+    email: '',
+
     // Academic
     currentLevel: 1,
     healthStatus: '' as 'Good' | 'Fair' | 'Poor' | 'Special Needs' | '',
     overallPerformance: '' as 'Excellent' | 'Good' | 'Average' | 'Below Average' | 'Poor' | '',
     careerPathways: '',
     specialInformation: '',
-    
+
     // Status
     status: 'Active' as 'Active',
     isOrphan: false,
     hasDisability: false,
     isMarried: false,
-    
+
     // Father
     fatherFirstName: '',
     fatherSurname: '',
@@ -55,7 +147,7 @@ export default function AddStudent() {
     fatherNationalId: '',
     fatherDateOfBirth: '',
     fatherIsDeceased: false,
-    
+
     // Mother
     motherFirstName: '',
     motherSurname: '',
@@ -66,7 +158,7 @@ export default function AddStudent() {
     motherNationalId: '',
     motherDateOfBirth: '',
     motherIsDeceased: false,
-    
+
     // Guardian
     guardianFirstName: '',
     guardianSurname: '',
@@ -78,10 +170,13 @@ export default function AddStudent() {
     guardianContactNumber: '',
   });
 
+  const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(null);
+  const [birthCertificateName, setBirthCertificateName] = useState<string | null>(null);
+
   const generateEnrolmentNumber = () => {
     const school = user?.school;
     if (!school) return '';
-    
+
     const year = new Date().getFullYear();
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
     return `${school.centerNumber}/${year}/${random}`;
@@ -96,11 +191,10 @@ export default function AddStudent() {
         throw new Error('School information not available');
       }
 
-      const studentId = `student_${Date.now()}`;
       const enrolmentNumber = formData.enrolmentNumber || generateEnrolmentNumber();
 
       const newStudent: Student = {
-        id: studentId,
+        id: id || `student_${Date.now()}`,
         schoolId: user.school.id,
         registrationDate: formData.registrationDate,
         enrolmentNumber,
@@ -112,7 +206,9 @@ export default function AddStudent() {
         dateOfBirth: formData.dateOfBirth,
         gender: formData.gender as 'Male' | 'Female',
         residentialAddress: formData.residentialAddress,
-        currentLevel: formData.currentLevel,
+        email: formData.email,
+        classId: formData.classId || undefined,
+        currentLevel: classes.find(c => c.id === formData.classId)?.level || 1,
         healthStatus: formData.healthStatus as 'Good' | 'Fair' | 'Poor' | 'Special Needs',
         academicPerformance: {},
         overallPerformance: formData.overallPerformance as 'Excellent' | 'Good' | 'Average' | 'Below Average' | 'Poor',
@@ -123,6 +219,29 @@ export default function AddStudent() {
         hasDisability: formData.hasDisability,
         isMarried: formData.isMarried,
       };
+
+      // Attach birth certificate if uploaded
+      if (birthCertificateFile && birthCertificateName) {
+        // read file as base64 synchronously was already done when selecting; store reference from state
+        // We'll read here to ensure data is available
+        const toBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+
+        try {
+          const base64 = await toBase64(birthCertificateFile);
+          (newStudent as any).birthCertificate = {
+            name: birthCertificateName,
+            mime: birthCertificateFile.type || 'application/pdf',
+            data: base64
+          };
+        } catch (err) {
+          // ignore and continue without certificate
+        }
+      }
 
       // Add father information
       if (formData.fatherFirstName && formData.fatherSurname) {
@@ -168,8 +287,8 @@ export default function AddStudent() {
         };
       }
 
-      StorageService.saveStudent(newStudent);
-      
+      await StudentService.saveStudent(newStudent);
+
       toast({
         title: "Student registered successfully",
         description: `${newStudent.firstName} ${newStudent.surname} has been added to the system.`,
@@ -177,9 +296,10 @@ export default function AddStudent() {
 
       navigate('/students');
     } catch (error) {
+      console.error(error);
       toast({
         title: "Registration failed",
-        description: "Failed to register student. Please try again.",
+        description: "Failed to register student. Please check the console for details.",
         variant: "destructive",
       });
     } finally {
@@ -191,6 +311,22 @@ export default function AddStudent() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleBirthCertificateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      toast({ title: 'Invalid file', description: 'Only PDF files are accepted for birth certificates.', variant: 'destructive' });
+      return;
+    }
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast({ title: 'File too large', description: 'Birth certificate must be smaller than 5MB.', variant: 'destructive' });
+      return;
+    }
+    setBirthCertificateFile(file);
+    setBirthCertificateName(file.name);
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="flex items-center gap-4 mb-8">
@@ -199,9 +335,9 @@ export default function AddStudent() {
         </div>
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-success bg-clip-text text-transparent">
-            Add New Student
+            {id ? 'Edit Student' : 'Add New Student'}
           </h1>
-          <p className="text-muted-foreground">Register a new student in the system</p>
+          <p className="text-muted-foreground">{id ? 'Update student record' : 'Register a new student in the system'}</p>
         </div>
       </div>
 
@@ -280,15 +416,6 @@ export default function AddStudent() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="nationalId">National ID</Label>
-              <Input
-                id="nationalId"
-                value={formData.nationalId}
-                onChange={(e) => updateFormData('nationalId', e.target.value)}
-                placeholder="123456/78/9"
-              />
-            </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="residentialAddress">Residential Address *</Label>
               <Input
@@ -297,6 +424,19 @@ export default function AddStudent() {
                 onChange={(e) => updateFormData('residentialAddress', e.target.value)}
                 required
               />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="birthCertificate">Birth Certificate (PDF)</Label>
+              <input
+                id="birthCertificate"
+                type="file"
+                accept="application/pdf"
+                onChange={handleBirthCertificateChange}
+                className="w-full"
+              />
+              {birthCertificateName && (
+                <div className="text-xs text-muted-foreground">Selected: {birthCertificateName}</div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -309,17 +449,32 @@ export default function AddStudent() {
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="currentLevel">Current Level *</Label>
-              <Select value={formData.currentLevel.toString()} onValueChange={(value) => updateFormData('currentLevel', parseInt(value))}>
+              <Label htmlFor="classId">Assigned Class *</Label>
+              <Select
+                value={formData.classId}
+                onValueChange={(value) => updateFormData('classId', value)}
+                required
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select level" />
+                  <SelectValue placeholder={isClassesLoading ? "Loading classes..." : "Select class"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {[...Array(12)].map((_, i) => (
-                    <SelectItem key={i + 1} value={(i + 1).toString()}>
-                      Level {i + 1}
-                    </SelectItem>
-                  ))}
+                  {isClassesLoading ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <span>Fetching registry...</span>
+                    </div>
+                  ) : classes.length > 0 ? (
+                    classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      No classes generated yet. Please setup your school structure in Settings.
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -341,7 +496,7 @@ export default function AddStudent() {
               <Label htmlFor="overallPerformance">Overall Performance</Label>
               <Select value={formData.overallPerformance} onValueChange={(value) => updateFormData('overallPerformance', value)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select performance level" />
+                  <SelectValue placeholder="Select performance" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Excellent">Excellent</SelectItem>
@@ -422,7 +577,7 @@ export default function AddStudent() {
             className="bg-gradient-to-r from-primary to-success"
           >
             <Save className="h-4 w-4 mr-2" />
-            {isLoading ? 'Registering...' : 'Register Student'}
+            {isLoading ? (id ? 'Updating...' : 'Registering...') : (id ? 'Update Student' : 'Register Student')}
           </Button>
         </div>
       </form>

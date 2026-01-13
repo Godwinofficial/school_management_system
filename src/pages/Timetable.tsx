@@ -10,37 +10,33 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AuthService } from "@/lib/auth";
-import { Plus, Edit, Trash2, Calendar as CalendarIcon, Repeat } from "lucide-react";
+import { TimetableService, TimetableEntry } from "@/lib/TimetableService";
+import { SchoolService } from "@/lib/SchoolService";
+import { Plus, Edit, Trash2, Calendar as CalendarIcon, Repeat, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Checkbox } from "@/components/ui/checkbox";
-
-interface TimetableEntry {
-    id: string;
-    title: string;
-    subject: string;
-    teacher: string;
-    room: string;
-    dayOfWeek: number; // 0=Sunday, 1=Monday, etc.
-    startTime: string; // HH:mm format
-    endTime: string;
-    color?: string;
-    recurring: boolean; // Always true for weekly timetable
-}
 
 export default function Timetable() {
     const user = AuthService.getCurrentUser();
     const canManage = user?.role === 'head_teacher' || user?.role === 'deputy_head' || user?.role === 'senior_teacher';
 
     const [entries, setEntries] = useState<TimetableEntry[]>([]);
+    const [loading, setLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedEntry, setSelectedEntry] = useState<TimetableEntry | null>(null);
+
+    // Dropdown data
+    const [classes, setClasses] = useState<any[]>([]);
+    const [teachers, setTeachers] = useState<any[]>([]);
+    const [subjects, setSubjects] = useState<any[]>([]);
+
     const [formData, setFormData] = useState({
-        subject: '',
-        teacher: '',
+        subject_id: '',
+        teacher_id: '',
+        class_id: '',
         room: '',
-        dayOfWeek: '1', // Monday
-        startTime: '08:00',
-        endTime: '09:00',
+        day_of_week: '1', // Monday
+        start_time: '08:00',
+        end_time: '09:00',
         color: '#3b82f6'
     });
 
@@ -52,203 +48,153 @@ export default function Timetable() {
         { value: '5', label: 'Friday' }
     ];
 
-    // Load timetable from localStorage
     useEffect(() => {
-        const savedTimetable = localStorage.getItem('school_timetable_recurring');
-        if (savedTimetable) {
-            setEntries(JSON.parse(savedTimetable));
-        } else {
-            // Sample recurring timetable data
-            const sampleEntries: TimetableEntry[] = [
-                {
-                    id: '1',
-                    title: 'Mathematics',
-                    subject: 'Mathematics',
-                    teacher: 'Mr. Mwanza',
-                    room: 'Room 101',
-                    dayOfWeek: 1, // Monday
-                    startTime: '08:00',
-                    endTime: '09:00',
-                    color: '#3b82f6',
-                    recurring: true
-                },
-                {
-                    id: '2',
-                    title: 'English',
-                    subject: 'English',
-                    teacher: 'Mrs. Banda',
-                    room: 'Room 102',
-                    dayOfWeek: 1, // Monday
-                    startTime: '09:00',
-                    endTime: '10:00',
-                    color: '#10b981',
-                    recurring: true
-                },
-                {
-                    id: '3',
-                    title: 'Science',
-                    subject: 'Science',
-                    teacher: 'Mr. Phiri',
-                    room: 'Lab 1',
-                    dayOfWeek: 2, // Tuesday
-                    startTime: '08:00',
-                    endTime: '09:00',
-                    color: '#f59e0b',
-                    recurring: true
-                },
-                {
-                    id: '4',
-                    title: 'Physical Education',
-                    subject: 'Physical Education',
-                    teacher: 'Mr. Zulu',
-                    room: 'Sports Field',
-                    dayOfWeek: 3, // Wednesday
-                    startTime: '14:00',
-                    endTime: '15:00',
-                    color: '#ef4444',
-                    recurring: true
-                },
-                {
-                    id: '5',
-                    title: 'History',
-                    subject: 'History',
-                    teacher: 'Mrs. Mulenga',
-                    room: 'Room 103',
-                    dayOfWeek: 4, // Thursday
-                    startTime: '10:00',
-                    endTime: '11:00',
-                    color: '#8b5cf6',
-                    recurring: true
-                }
-            ];
-            setEntries(sampleEntries);
-            localStorage.setItem('school_timetable_recurring', JSON.stringify(sampleEntries));
+        if (user?.school?.id) {
+            loadData();
         }
-    }, []);
+    }, [user?.school?.id]);
 
-    // Convert recurring entries to FullCalendar events
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const schoolId = user!.school!.id;
+
+            // Fetch dropdown details if manager
+            if (canManage) {
+                const [classesList, teachersList, subjectsList] = await Promise.all([
+                    SchoolService.getClasses(schoolId),
+                    SchoolService.getTeachers(schoolId),
+                    SchoolService.getSubjects(schoolId)
+                ]);
+                setClasses(classesList);
+                setTeachers(teachersList);
+                setSubjects(subjectsList);
+            }
+
+            // Fetch timetable entries based on role
+            let filters: any = {};
+            if (user?.role === 'class_teacher') {
+                filters = { teacherId: user.id };
+            } else if (user?.role === 'student' && user.classId) {
+                filters = { classId: user.classId };
+            }
+
+
+            const data = await TimetableService.getTimetable(schoolId, filters);
+            setEntries(data);
+        } catch (error) {
+            toast.error("Failed to load timetable data");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const getCalendarEvents = () => {
         return entries.map(entry => ({
             id: entry.id,
-            title: `${entry.subject}\n${entry.teacher}\n${entry.room}`,
-            daysOfWeek: [entry.dayOfWeek],
-            startTime: entry.startTime,
-            endTime: entry.endTime,
+            title: `${entry.subject_name || entry.subject_id}\n${entry.teacher_name || entry.teacher_id}\n${entry.room}`,
+            daysOfWeek: [entry.day_of_week],
+            startTime: entry.start_time,
+            endTime: entry.end_time,
             backgroundColor: entry.color,
             borderColor: entry.color,
-            extendedProps: {
-                subject: entry.subject,
-                teacher: entry.teacher,
-                room: entry.room
-            }
+            extendedProps: { ...entry }
         }));
     };
 
-    // Save timetable to localStorage
-    const saveTimetable = (updatedEntries: TimetableEntry[]) => {
-        localStorage.setItem('school_timetable_recurring', JSON.stringify(updatedEntries));
-        setEntries(updatedEntries);
-    };
-
     const handleEventClick = (clickInfo: any) => {
+        if (!canManage) return;
+
         const entry = entries.find(e => e.id === clickInfo.event.id);
         if (entry) {
             setSelectedEntry(entry);
             setFormData({
-                subject: entry.subject,
-                teacher: entry.teacher,
+                subject_id: entry.subject_id,
+                teacher_id: entry.teacher_id,
+                class_id: entry.class_id,
                 room: entry.room,
-                dayOfWeek: entry.dayOfWeek.toString(),
-                startTime: entry.startTime,
-                endTime: entry.endTime,
+                day_of_week: entry.day_of_week.toString(),
+                start_time: entry.start_time,
+                end_time: entry.end_time,
                 color: entry.color || '#3b82f6'
             });
             setIsDialogOpen(true);
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canManage) return;
 
-        if (!canManage) {
-            toast.error("You don't have permission to modify timetable");
-            return;
-        }
-
-        if (selectedEntry) {
-            // Update existing entry
-            const updatedEntries = entries.map(entry =>
-                entry.id === selectedEntry.id
-                    ? {
-                        ...entry,
-                        title: formData.subject,
-                        subject: formData.subject,
-                        teacher: formData.teacher,
-                        room: formData.room,
-                        dayOfWeek: parseInt(formData.dayOfWeek),
-                        startTime: formData.startTime,
-                        endTime: formData.endTime,
-                        color: formData.color
-                    }
-                    : entry
-            );
-            saveTimetable(updatedEntries);
-            toast.success("Timetable entry updated successfully");
-        } else {
-            // Create new entry
-            const newEntry: TimetableEntry = {
-                id: Date.now().toString(),
-                title: formData.subject,
-                subject: formData.subject,
-                teacher: formData.teacher,
-                room: formData.room,
-                dayOfWeek: parseInt(formData.dayOfWeek),
-                startTime: formData.startTime,
-                endTime: formData.endTime,
-                color: formData.color,
-                recurring: true
+        try {
+            const payload: any = {
+                ...formData,
+                day_of_week: parseInt(formData.day_of_week),
+                school_id: user!.school!.id
             };
-            saveTimetable([...entries, newEntry]);
-            toast.success("Timetable entry created successfully");
-        }
 
-        setIsDialogOpen(false);
-        resetForm();
+            if (selectedEntry) {
+                payload.id = selectedEntry.id;
+            }
+
+            await TimetableService.saveEntry(payload, user!.id);
+            toast.success(selectedEntry ? "Entry updated" : "Entry created");
+            setIsDialogOpen(false);
+            loadData();
+            resetForm();
+        } catch (error) {
+            toast.error("Failed to save entry");
+        }
     };
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (!canManage || !selectedEntry) return;
 
-        const updatedEntries = entries.filter(entry => entry.id !== selectedEntry.id);
-        saveTimetable(updatedEntries);
-        toast.success("Timetable entry deleted successfully");
-        setIsDialogOpen(false);
-        resetForm();
+        try {
+            await TimetableService.deleteEntry(selectedEntry.id, user!.school!.id, user!.id);
+            toast.success("Entry deleted");
+            setIsDialogOpen(false);
+            loadData();
+            resetForm();
+        } catch (error) {
+            toast.error("Failed to delete entry");
+        }
     };
 
     const resetForm = () => {
         setFormData({
-            subject: '',
-            teacher: '',
+            subject_id: '',
+            teacher_id: '',
+            class_id: '',
             room: '',
-            dayOfWeek: '1',
-            startTime: '08:00',
-            endTime: '09:00',
+            day_of_week: '1',
+            start_time: '08:00',
+            end_time: '09:00',
             color: '#3b82f6'
         });
         setSelectedEntry(null);
     };
+
+    if (loading) {
+        return (
+            <div className="flex h-[400px] items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     return (
         <div className="container mx-auto p-6 space-y-6">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                        <Repeat className="h-8 w-8" />
+                        <Repeat className="h-8 w-8 text-primary" />
                         Weekly Timetable
                     </h1>
                     <p className="text-muted-foreground">
-                        {canManage ? 'Manage the recurring weekly school timetable' : 'View the weekly school timetable'}
+                        {canManage ? 'Manage school-wide recurring timetable' :
+                            user?.role === 'class_teacher' ? 'Your assigned class schedule' :
+                                'Your weekly class schedule'}
                     </p>
                 </div>
                 {canManage && (
@@ -257,38 +203,25 @@ export default function Timetable() {
                         setIsDialogOpen(true);
                     }}>
                         <Plus className="mr-2 h-4 w-4" />
-                        Add Class
+                        Add Session
                     </Button>
                 )}
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                    <Repeat className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                    <div>
-                        <h3 className="font-semibold text-blue-900 dark:text-blue-100">Recurring Weekly Schedule</h3>
-                        <p className="text-sm text-blue-700 dark:text-blue-300">
-                            This timetable repeats every week. Classes scheduled for Monday will occur every Monday,
-                            Tuesday classes every Tuesday, and so on throughout the school year.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <CalendarIcon className="h-5 w-5" />
-                        Weekly Class Schedule
+            <Card className="border-border/50 shadow-sm overflow-hidden">
+                <CardHeader className="bg-muted/30 pb-4">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                        <CalendarIcon className="h-5 w-5 text-primary" />
+                        Weekly Schedule
                     </CardTitle>
                     <CardDescription>
                         {canManage
-                            ? 'Click on an existing class to edit it, or use the "Add Class" button to create a new one'
-                            : 'View all scheduled classes for the week'
+                            ? 'Manage classes and teacher assignments effectively'
+                            : 'View the official school schedule for this term'
                         }
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-4">
                     <div className="timetable-calendar">
                         <FullCalendar
                             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -302,22 +235,12 @@ export default function Timetable() {
                             slotMaxTime="17:00:00"
                             allDaySlot={false}
                             editable={false}
-                            selectable={false}
-                            dayMaxEvents={true}
                             weekends={false}
                             events={getCalendarEvents()}
                             eventClick={handleEventClick}
                             height="auto"
-                            eventTimeFormat={{
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                hour12: false
-                            }}
-                            slotLabelFormat={{
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                hour12: false
-                            }}
+                            eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
+                            slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
                         />
                     </div>
                 </CardContent>
@@ -326,200 +249,107 @@ export default function Timetable() {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            {selectedEntry ? (
-                                <>
-                                    <Edit className="h-5 w-5" />
-                                    Edit Class
-                                </>
-                            ) : (
-                                <>
-                                    <Plus className="h-5 w-5" />
-                                    Add New Class
-                                </>
-                            )}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {canManage
-                                ? 'This class will repeat every week on the selected day'
-                                : 'You can only view timetable entries'
-                            }
-                        </DialogDescription>
+                        <DialogTitle>{selectedEntry ? 'Edit Session' : 'Add New Session'}</DialogTitle>
+                        <DialogDescription>Fill in the details for the recurring weekly session</DialogDescription>
                     </DialogHeader>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="subject">Subject *</Label>
-                            <Input
-                                id="subject"
-                                value={formData.subject}
-                                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                                placeholder="e.g., Mathematics"
-                                required
-                                disabled={!canManage}
-                            />
+                            <Label>Subject</Label>
+                            <Select
+                                value={formData.subject_id}
+                                onValueChange={(v) => setFormData({ ...formData, subject_id: v })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Subject" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {subjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="teacher">Teacher *</Label>
-                            <Input
-                                id="teacher"
-                                value={formData.teacher}
-                                onChange={(e) => setFormData({ ...formData, teacher: e.target.value })}
-                                placeholder="e.g., Mr. Mwanza"
-                                required
-                                disabled={!canManage}
-                            />
+                            <Label>Teacher</Label>
+                            <Select
+                                value={formData.teacher_id}
+                                onValueChange={(v) => setFormData({ ...formData, teacher_id: v })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Teacher" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="room">Room/Location *</Label>
+                            <Label>Class</Label>
+                            <Select
+                                value={formData.class_id}
+                                onValueChange={(v) => setFormData({ ...formData, class_id: v })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Class" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Room/Location</Label>
                             <Input
-                                id="room"
                                 value={formData.room}
                                 onChange={(e) => setFormData({ ...formData, room: e.target.value })}
                                 placeholder="e.g., Room 101"
                                 required
-                                disabled={!canManage}
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="dayOfWeek">Day of Week *</Label>
+                            <Label>Day of Week</Label>
                             <Select
-                                value={formData.dayOfWeek}
-                                onValueChange={(value) => setFormData({ ...formData, dayOfWeek: value })}
-                                disabled={!canManage}
+                                value={formData.day_of_week}
+                                onValueChange={(v) => setFormData({ ...formData, day_of_week: v })}
                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select day" />
-                                </SelectTrigger>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    {daysOfWeek.map(day => (
-                                        <SelectItem key={day.value} value={day.value}>
-                                            {day.label}
-                                        </SelectItem>
-                                    ))}
+                                    {daysOfWeek.map(day => <SelectItem key={day.value} value={day.value}>{day.label}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="startTime">Start Time *</Label>
-                                <Input
-                                    id="startTime"
-                                    type="time"
-                                    value={formData.startTime}
-                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                    required
-                                    disabled={!canManage}
-                                />
+                                <Label>Start Time</Label>
+                                <Input type="time" value={formData.start_time} onChange={(e) => setFormData({ ...formData, start_time: e.target.value })} required />
                             </div>
-
                             <div className="space-y-2">
-                                <Label htmlFor="endTime">End Time *</Label>
-                                <Input
-                                    id="endTime"
-                                    type="time"
-                                    value={formData.endTime}
-                                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                                    required
-                                    disabled={!canManage}
-                                />
+                                <Label>End Time</Label>
+                                <Input type="time" value={formData.end_time} onChange={(e) => setFormData({ ...formData, end_time: e.target.value })} required />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="color">Color</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="color"
-                                    type="color"
-                                    value={formData.color}
-                                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                                    className="w-20 h-10"
-                                    disabled={!canManage}
-                                />
-                                <Input
-                                    value={formData.color}
-                                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                                    placeholder="#3b82f6"
-                                    disabled={!canManage}
-                                />
-                            </div>
-                        </div>
-
-                        {canManage && (
-                            <DialogFooter className="gap-2">
-                                {selectedEntry && (
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        onClick={handleDelete}
-                                    >
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Delete
-                                    </Button>
-                                )}
-                                <Button type="submit">
-                                    {selectedEntry ? (
-                                        <>
-                                            <Edit className="mr-2 h-4 w-4" />
-                                            Update
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Plus className="mr-2 h-4 w-4" />
-                                            Create
-                                        </>
-                                    )}
-                                </Button>
-                            </DialogFooter>
-                        )}
+                        <DialogFooter className="gap-2 pt-4">
+                            {selectedEntry && (
+                                <Button type="button" variant="destructive" onClick={handleDelete}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
+                            )}
+                            <Button type="submit">{selectedEntry ? 'Update Session' : 'Create Session'}</Button>
+                        </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
 
             <style>{`
-        .timetable-calendar .fc {
-          font-family: inherit;
-        }
-        .timetable-calendar .fc-theme-standard td,
-        .timetable-calendar .fc-theme-standard th {
-          border-color: hsl(var(--border));
-        }
-        .timetable-calendar .fc-button {
-          background-color: hsl(var(--primary));
-          border-color: hsl(var(--primary));
-          color: hsl(var(--primary-foreground));
-        }
-        .timetable-calendar .fc-button:hover {
-          background-color: hsl(var(--primary) / 0.9);
-        }
-        .timetable-calendar .fc-button-active {
-          background-color: hsl(var(--primary) / 0.8);
-        }
-        .timetable-calendar .fc-col-header-cell {
-          background-color: hsl(var(--muted));
-          font-weight: 600;
-        }
-        .timetable-calendar .fc-timegrid-slot {
-          height: 3em;
-        }
-        .timetable-calendar .fc-event {
-          cursor: pointer;
-          border-radius: 4px;
-          padding: 2px 4px;
-        }
-        .timetable-calendar .fc-event:hover {
-          opacity: 0.9;
-        }
-        .timetable-calendar .fc-event-title {
-          white-space: pre-line;
-          font-size: 0.85em;
-        }
-      `}</style>
+                .timetable-calendar .fc-theme-standard td, .timetable-calendar .fc-theme-standard th { border-color: hsl(var(--border)); }
+                .timetable-calendar .fc-button { background-color: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+                .timetable-calendar .fc-event { cursor: pointer; border-radius: 6px; padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                .timetable-calendar .fc-event-title { white-space: pre-line; font-size: 0.8em; font-weight: 500; }
+            `}</style>
         </div>
     );
 }
+

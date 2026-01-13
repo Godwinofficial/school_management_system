@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { SchoolService, School } from "@/lib/SchoolService";
 import { StorageService } from "@/lib/storage";
 import { AuthService, User, UserPermission, DEFAULT_PERMISSIONS } from "@/lib/auth";
+import { supabase } from "@/lib/supabaseClient"; // Added import
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, MapPin, Users, School as SchoolIcon, TrendingUp, AlertTriangle, Phone, Mail, CreditCard, Calendar, Edit, User as UserIcon, Shield } from "lucide-react";
+import { ArrowLeft, MapPin, Users, School as SchoolIcon, TrendingUp, AlertTriangle, Phone, Mail, CreditCard, Calendar, Edit, User as UserIcon, Shield, Copy } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "@/hooks/use-toast";
 
@@ -35,30 +36,153 @@ export default function AdminSchoolDetails() {
     const [selectedPermissions, setSelectedPermissions] = useState<UserPermission[]>([]);
 
     useEffect(() => {
-        if (id) {
-            const foundSchool = SchoolService.getSchool(id);
-            if (foundSchool) {
-                setSchool(foundSchool);
-                setSchoolUsers(AuthService.getUsersBySchool(id));
-                setEditForm({
-                    name: foundSchool.name,
-                    centerNumber: foundSchool.centerNumber,
-                    province: foundSchool.location.province,
-                    district: foundSchool.location.district,
-                    email: foundSchool.contact.email,
-                    phone: foundSchool.contact.phone || ''
-                });
-            } else {
-                navigate("/admin/schools");
+        const fetchSchoolData = async () => {
+            if (!id) return;
+
+            try {
+                const foundSchool = await SchoolService.getSchool(id);
+                if (foundSchool) {
+                    setSchool(foundSchool);
+
+                    // Fetch staff from profiles
+                    const { data: profiles } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('school_id', id);
+
+                    let mappedUsers: User[] = [];
+                    if (profiles) {
+                        mappedUsers = profiles.map(p => ({
+                            id: p.id,
+                            email: p.email,
+                            firstName: p.first_name || '',
+                            lastName: p.last_name || '',
+                            role: p.role as any,
+                            permissions: p.metadata?.permissions || []
+                        }));
+                    }
+
+                    // Also fetch from local storage mock DB to ensure consistency in dev mode
+                    const localUsers = AuthService.getUsersBySchool(id);
+
+                    // Merge users (prefer local if duplicates by email, or union?)
+                    // Simple union by email
+                    const allUsers = [...mappedUsers];
+                    localUsers.forEach(localU => {
+                        if (!allUsers.find(u => u.email === localU.email)) {
+                            allUsers.push(localU);
+                        }
+                    });
+
+                    setSchoolUsers(allUsers);
+
+                    setEditForm({
+                        name: foundSchool.name,
+                        centerNumber: foundSchool.centerNumber,
+                        province: foundSchool.location.province,
+                        district: foundSchool.location.district,
+                        email: foundSchool.contact.email,
+                        phone: foundSchool.contact.phone || ''
+                    });
+                } else {
+                    navigate("/admin/schools");
+                }
+            } catch (error) {
+                console.error("Failed to load school", error);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
-        }
+        };
+
+        fetchSchoolData();
     }, [id, navigate]);
 
-    const handleUpdateSchool = () => {
+    const handleProvisionAccounts = () => {
         if (!school) return;
 
-        const updated = SchoolService.updateSchool(school.id, {
+        // Generate clean domain from school name
+        // e.g. "Lusaka Primary School" -> "lusakaprimaryschool.edu" But user requested specific casing potentially? 
+        // We will standartize to CamelCase for display but emails are usually lower.
+        // User asked for "support@Lusakaprimaryschool.edu". 
+        // Let's clean the name: Remove spaces, keep casting? Email usually lowercase.
+        // I will use lowercase for reliability.
+        const cleanName = school.name.replace(/[^a-zA-Z0-9]/g, '');
+        const domain = `${cleanName}.edu`.toLowerCase();
+
+        const newUsers: User[] = [];
+        let addedHead = false;
+        let addedSenior = false;
+
+        if (!schoolUsers.find(u => u.role === 'head_teacher')) {
+            const head: User = {
+                id: crypto.randomUUID(),
+                email: `support@${domain}`,
+                firstName: 'Head',
+                lastName: 'Teacher',
+                role: 'head_teacher',
+                school: {
+                    id: school.id,
+                    name: school.name,
+                    type: school.type as any,
+                    province: school.location.province,
+                    district: school.location.district,
+                    ward: school.location.ward || '',
+                    standardCapacity: school.subscription.plan.features.maxStudents || 500,
+                    totalEnrolment: school.stats.totalStudents,
+                    centerNumber: school.centerNumber,
+                    slug: school.slug || ''
+                },
+                permissions: DEFAULT_PERMISSIONS.head_teacher
+            };
+            AuthService.registerUser(head);
+            newUsers.push(head);
+            addedHead = true;
+        }
+
+        if (!schoolUsers.find(u => u.role === 'senior_teacher')) {
+            const senior: User = {
+                id: crypto.randomUUID(),
+                email: `senior.support@${domain}`,
+                firstName: 'Senior',
+                lastName: 'Teacher',
+                role: 'senior_teacher',
+                school: {
+                    id: school.id,
+                    name: school.name,
+                    type: school.type as any,
+                    province: school.location.province,
+                    district: school.location.district,
+                    ward: school.location.ward || '',
+                    standardCapacity: school.subscription.plan.features.maxStudents || 500,
+                    totalEnrolment: school.stats.totalStudents,
+                    centerNumber: school.centerNumber,
+                    slug: school.slug || ''
+                },
+                permissions: DEFAULT_PERMISSIONS.senior_teacher
+            };
+            AuthService.registerUser(senior);
+            newUsers.push(senior);
+            addedSenior = true;
+        }
+
+        if (newUsers.length > 0) {
+            setSchoolUsers(prev => [...prev, ...newUsers]);
+            toast({
+                title: "Accounts Provisioned",
+                description: `Created default accounts for: ${addedHead ? 'Head Teacher' : ''} ${addedSenior ? 'Senior Teacher' : ''}`,
+            });
+        } else {
+            toast({
+                title: "No Action Needed",
+                description: "Key administration accounts already exist.",
+            });
+        }
+    };
+
+    const handleUpdateSchool = async () => {
+        if (!school) return;
+
+        const updated = await SchoolService.updateSchool(school.id, {
             name: editForm.name,
             centerNumber: editForm.centerNumber,
             location: {
@@ -82,28 +206,111 @@ export default function AdminSchoolDetails() {
         }
     };
 
+    const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+    const [userForm, setUserForm] = useState<{
+        id?: string,
+        firstName: string,
+        lastName: string,
+        email: string,
+        role: User['role']
+    }>({
+        firstName: '',
+        lastName: '',
+        email: '',
+        role: 'class_teacher'
+    });
+
     const handleOpenPermissions = (user: User) => {
         setSelectedUser(user);
         setSelectedPermissions(user.permissions || DEFAULT_PERMISSIONS[user.role] || []);
         setIsPermissionsOpen(true);
     };
 
-    const handleSavePermissions = () => {
+    const handleSavePermissions = async () => {
         if (selectedUser) {
+            // Update permissions in metadata (Supabase)
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    metadata: { permissions: selectedPermissions }
+                })
+                .eq('email', selectedUser.email);
+
+            // Update in Local AuthService (mock DB)
             AuthService.updateUser(selectedUser.email, { permissions: selectedPermissions });
 
-            // Update local state
-            setSchoolUsers(prev => prev.map(u =>
-                u.email === selectedUser.email ? { ...u, permissions: selectedPermissions } : u
-            ));
+            if (!error) {
+                // Update local state in UI
+                setSchoolUsers(prev => prev.map(u =>
+                    u.email === selectedUser.email ? { ...u, permissions: selectedPermissions } : u
+                ));
 
-            setIsPermissionsOpen(false);
-            toast({
-                title: "Permissions Updated",
-                description: `Permissions for ${selectedUser.firstName} have been updated.`,
-            });
+                setIsPermissionsOpen(false);
+                toast({
+                    title: "Permissions Updated",
+                    description: `Permissions for ${selectedUser.firstName} have been updated in system.`,
+                });
+            } else {
+                // Fallback for local-only users (Supabase might fail if they don't exist there, but local worked)
+                setSchoolUsers(prev => prev.map(u =>
+                    u.email === selectedUser.email ? { ...u, permissions: selectedPermissions } : u
+                ));
+                setIsPermissionsOpen(false);
+                toast({
+                    title: "Permissions Updated (Local)",
+                    description: `Permissions updated. Note: Sync to cloud may have failed if user is local-only.`,
+                });
+            }
         }
     };
+
+    const handleEditUser = (user: User) => {
+        setUserForm({
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            role: user.role
+        });
+        setIsAddUserOpen(true);
+    };
+
+    const handleSaveUser = () => {
+        if (!school) return;
+
+        if (userForm.id) {
+            // Update existing
+            AuthService.updateUser(userForm.email, {
+                firstName: userForm.firstName,
+                lastName: userForm.lastName,
+                role: userForm.role
+            });
+
+            // Update UI
+            setSchoolUsers(prev => prev.map(u =>
+                u.id === userForm.id ? { ...u, ...userForm } : u
+            ));
+
+            toast({ title: "User Updated", description: "User details updated successfully." });
+        } else {
+            // Create new
+            const newUser: User = {
+                id: crypto.randomUUID(),
+                email: userForm.email,
+                firstName: userForm.firstName,
+                lastName: userForm.lastName,
+                role: userForm.role,
+                school: { ...school, slug: school.slug || '' },
+                permissions: DEFAULT_PERMISSIONS[userForm.role]
+            };
+            AuthService.registerUser(newUser);
+            setSchoolUsers(prev => [...prev, newUser]);
+            toast({ title: "User Created", description: `Account created. Default password is '123456'.` });
+        }
+        setIsAddUserOpen(false);
+        setUserForm({ firstName: '', lastName: '', email: '', role: 'class_teacher' }); // Reset
+    };
+
 
     const togglePermission = (permission: UserPermission) => {
         setSelectedPermissions(prev =>
@@ -140,6 +347,7 @@ export default function AdminSchoolDetails() {
     };
 
     const capacityStatus = getCapacityStatus(utilization);
+
 
     return (
         <div className="space-y-6 p-6">
@@ -243,6 +451,42 @@ export default function AdminSchoolDetails() {
                 </CardContent>
             </Card>
 
+            {/* Portal Link Card */}
+            <Card className="border-purple-100 bg-purple-50/50">
+                <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                            <Shield className="h-5 w-5 text-purple-600" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-purple-900">School Portal Access Link</p>
+                            <p className="text-xs text-purple-600/80">Share this link with school administrators and students</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <code className="hidden sm:block px-3 py-1.5 rounded-md bg-white border border-purple-200 text-xs font-mono text-purple-800">
+                            {`${window.location.origin}/login?schoolId=${school.id}`}
+                        </code>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            className="text-purple-700 bg-white border border-purple-200 hover:bg-purple-50"
+                            onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}/login?schoolId=${school.id}`);
+                                toast({
+                                    title: "Link Copied",
+                                    description: "Portal link copied to clipboard",
+                                    className: "bg-purple-600 text-white border-none"
+                                });
+                            }}
+                        >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy Link
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Content Tabs */}
             <Tabs defaultValue="overview" className="space-y-4">
                 <TabsList>
@@ -322,8 +566,20 @@ export default function AdminSchoolDetails() {
                         </Card>
 
                         <Card>
-                            <CardHeader>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle>Key Administration</CardTitle>
+                                {(!headTeacher || !seniorTeacher) && (
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={() => setIsAddUserOpen(true)} className="h-8">
+                                            <UserIcon className="h-3 w-3 mr-2" />
+                                            Add Custom
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={handleProvisionAccounts} className="h-8">
+                                            <Shield className="h-3 w-3 mr-2" />
+                                            Auto-Generate
+                                        </Button>
+                                    </div>
+                                )}
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
@@ -333,16 +589,24 @@ export default function AdminSchoolDetails() {
                                             Head Teacher
                                         </div>
                                         {headTeacher && (
-                                            <Button variant="ghost" size="sm" onClick={() => handleOpenPermissions(headTeacher)}>
-                                                <Shield className="h-3 w-3 mr-1" />
-                                                Privileges
-                                            </Button>
+                                            <div className="flex gap-1">
+                                                <Button variant="ghost" size="sm" onClick={() => handleEditUser(headTeacher)}>
+                                                    <Edit className="h-3 w-3" />
+                                                </Button>
+                                                <Button variant="ghost" size="sm" onClick={() => handleOpenPermissions(headTeacher)}>
+                                                    <Shield className="h-3 w-3 mr-1" />
+                                                    Privileges
+                                                </Button>
+                                            </div>
                                         )}
                                     </div>
                                     {headTeacher ? (
-                                        <div className="pl-6">
+                                        <div className="pl-6 group hover:bg-muted/50 p-2 rounded-md transition-colors">
                                             <div className="font-medium">{headTeacher.firstName} {headTeacher.lastName}</div>
-                                            <div className="text-sm text-muted-foreground">{headTeacher.email}</div>
+                                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                                                {headTeacher.email}
+                                                <Badge variant="outline" className="text-[10px] h-5">Password: 123456</Badge>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="pl-6 text-sm text-muted-foreground italic">Not assigned</div>
@@ -355,16 +619,24 @@ export default function AdminSchoolDetails() {
                                             Senior Teacher
                                         </div>
                                         {seniorTeacher && (
-                                            <Button variant="ghost" size="sm" onClick={() => handleOpenPermissions(seniorTeacher)}>
-                                                <Shield className="h-3 w-3 mr-1" />
-                                                Privileges
-                                            </Button>
+                                            <div className="flex gap-1">
+                                                <Button variant="ghost" size="sm" onClick={() => handleEditUser(seniorTeacher)}>
+                                                    <Edit className="h-3 w-3" />
+                                                </Button>
+                                                <Button variant="ghost" size="sm" onClick={() => handleOpenPermissions(seniorTeacher)}>
+                                                    <Shield className="h-3 w-3 mr-1" />
+                                                    Privileges
+                                                </Button>
+                                            </div>
                                         )}
                                     </div>
                                     {seniorTeacher ? (
-                                        <div className="pl-6">
+                                        <div className="pl-6 group hover:bg-muted/50 p-2 rounded-md transition-colors">
                                             <div className="font-medium">{seniorTeacher.firstName} {seniorTeacher.lastName}</div>
-                                            <div className="text-sm text-muted-foreground">{seniorTeacher.email}</div>
+                                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                                                {seniorTeacher.email}
+                                                <Badge variant="outline" className="text-[10px] h-5">Password: 123456</Badge>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="pl-6 text-sm text-muted-foreground italic">Not assigned</div>
@@ -415,14 +687,20 @@ export default function AdminSchoolDetails() {
 
                 <TabsContent value="staff">
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Staff Management</CardTitle>
-                            <CardDescription>Manage school staff and their privileges</CardDescription>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Staff Management</CardTitle>
+                                <CardDescription>Manage school staff and their privileges</CardDescription>
+                            </div>
+                            <Button size="sm" onClick={() => setIsAddUserOpen(true)}>
+                                <UserIcon className="h-4 w-4 mr-2" />
+                                Add Staff
+                            </Button>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-4">
                                 {schoolUsers.map(user => (
-                                    <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                    <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
                                         <div className="flex items-center gap-4">
                                             <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
                                                 <UserIcon className="h-5 w-5 text-slate-500" />
@@ -430,13 +708,19 @@ export default function AdminSchoolDetails() {
                                             <div>
                                                 <div className="font-medium">{user.firstName} {user.lastName}</div>
                                                 <div className="text-sm text-muted-foreground">{user.email}</div>
-                                                <Badge variant="outline" className="mt-1">{user.role.replace('_', ' ')}</Badge>
+                                                <Badge variant="outline" className="mt-1">{user.role?.replace('_', ' ')}</Badge>
                                             </div>
                                         </div>
-                                        <Button variant="outline" size="sm" onClick={() => handleOpenPermissions(user)}>
-                                            <Shield className="h-4 w-4 mr-2" />
-                                            Manage Privileges
-                                        </Button>
+                                        <div className="flex gap-2">
+                                            <Button variant="ghost" size="sm" onClick={() => handleEditUser(user)}>
+                                                <Edit className="h-4 w-4 mr-2" />
+                                                Edit
+                                            </Button>
+                                            <Button variant="outline" size="sm" onClick={() => handleOpenPermissions(user)}>
+                                                <Shield className="h-4 w-4 mr-2" />
+                                                Privileges
+                                            </Button>
+                                        </div>
                                     </div>
                                 ))}
                                 {schoolUsers.length === 0 && (
@@ -473,6 +757,67 @@ export default function AdminSchoolDetails() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsPermissionsOpen(false)}>Cancel</Button>
                         <Button onClick={handleSavePermissions}>Save Privileges</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add/Edit User Dialog */}
+            <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{userForm.id ? 'Edit User' : 'Add New User'}</DialogTitle>
+                        <DialogDescription>
+                            {userForm.id ? 'Modify user details.' : 'Create a new staff account for this school.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>First Name</Label>
+                                <Input
+                                    value={userForm.firstName}
+                                    onChange={e => setUserForm({ ...userForm, firstName: e.target.value })}
+                                    placeholder="John"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Last Name</Label>
+                                <Input
+                                    value={userForm.lastName}
+                                    onChange={e => setUserForm({ ...userForm, lastName: e.target.value })}
+                                    placeholder="Doe"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Email</Label>
+                            <Input
+                                value={userForm.email}
+                                onChange={e => setUserForm({ ...userForm, email: e.target.value })}
+                                placeholder="john.doe@school.edu"
+                                disabled={!!userForm.id} // Disable email edit for now to simplify auth keys
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Role</Label>
+                            <select
+                                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                value={userForm.role}
+                                onChange={e => setUserForm({ ...userForm, role: e.target.value as any })}
+                            >
+                                <option value="head_teacher">Head Teacher</option>
+                                <option value="deputy_head">Deputy Head</option>
+                                <option value="senior_teacher">Senior Teacher</option>
+                                <option value="class_teacher">Class Teacher</option>
+                                <option value="school_accountant">School Accountant</option>
+                            </select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddUserOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveUser}>
+                            {userForm.id ? 'Update User' : 'Create Account'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

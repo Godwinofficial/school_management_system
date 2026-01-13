@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthService } from "@/lib/auth";
 import { StorageService, School } from "@/lib/storage";
+import { SchoolService } from "@/lib/SchoolService";
 import { toast } from "@/hooks/use-toast";
 import { GraduationCap, ArrowRight, CheckCircle2, ShieldCheck, Users, Loader2, School as SchoolIcon, MapPin } from "lucide-react";
 import heroImage from "@/assets/education-hero.jpg";
@@ -38,11 +39,28 @@ export function LoginForm() {
 
   useEffect(() => {
     const schoolId = searchParams.get('schoolId');
-    if (schoolId) {
-      const foundSchool = StorageService.getSchool(schoolId);
-      if (foundSchool) {
-        setSchool(foundSchool);
-      }
+    const slug = searchParams.get('school');
+
+    if (schoolId || slug) {
+      const loadSchool = async () => {
+        console.log("Checking school:", schoolId || slug);
+        let foundSchool = null;
+
+        if (schoolId) {
+          foundSchool = await SchoolService.getSchool(schoolId);
+        } else if (slug) {
+          foundSchool = await SchoolService.getSchoolBySlug(slug);
+        }
+
+        if (foundSchool) {
+          setSchool(foundSchool);
+        } else if (schoolId) {
+          // Fallback to StorageService (Mock) if not found in DB or error
+          const mockSchool = StorageService.getSchool(schoolId);
+          if (mockSchool) setSchool(mockSchool);
+        }
+      };
+      loadSchool();
     }
   }, [searchParams]);
 
@@ -61,8 +79,47 @@ export function LoginForm() {
     await new Promise(resolve => setTimeout(resolve, 800));
 
     try {
-      const user = AuthService.login(email, password);
+      const user = await AuthService.login(email, password);
+
       if (user) {
+        // Dynamic Link Support:
+        // If the user used a dynamic link with ?schoolId=..., we want to immerse them in THAT school's context
+        // if they are authorized. For now, we update their current session's school context to match the link.
+        // This solves the issue where a generic user logs in but needs to be in a specific school context.
+        // NOTE: This updates the LOCAL SESSION only, not the DB.
+        if (school) {
+          // Define permissions: System Admins & External Officials can access any portal
+          const isExempt =
+            user.role === 'super_admin' ||
+            user.role.startsWith('district') ||
+            user.role.startsWith('provincial') ||
+            user.role.startsWith('national') ||
+            user.role.startsWith('director') ||
+            user.role === 'permanent_secretary';
+
+          if (!isExempt) {
+            // Strict Check for School Staff & Students
+            // They MUST belong to the school they are trying to access.
+
+            // Normalize IDs for comparison (handle potential number vs string differences)
+            const userSchoolId = user.school?.id ? String(user.school.id) : null;
+            const targetSchoolId = String(school.id);
+
+            console.log(`[Security Check] User: ${user.email} (${user.role}) | UserSchool: ${userSchoolId} | Target: ${targetSchoolId}`);
+
+            if (userSchoolId !== targetSchoolId) {
+              console.warn(`[Security Block] User ${user.email} from school ${userSchoolId} attempted to access ${targetSchoolId}`);
+              toast({
+                title: "Access Restricted",
+                description: "You validly authenticated, but you do not belong to this school. Please log in via your own school's login page.",
+                variant: "destructive",
+              });
+              setIsLoading(false);
+              return; // STOP EXECUTION
+            }
+          }
+        }
+
         toast({
           title: "Welcome back!",
           description: `Successfully logged in as ${user.firstName} ${user.lastName}`,
@@ -70,18 +127,26 @@ export function LoginForm() {
         });
 
         if (user.role === 'student') {
-          navigate('/student');
+          const slug = user.school?.slug || 'national';
+          navigate(`/${slug}/student`); // Was /student-portal, but App.tsx says /student
         } else {
-          navigate('/dashboard');
+          if (user.school) {
+            // Check if slug is somehow still broken (e.g. "godwin-banda") and fix it before navigating
+            const slugToUse = user.school.slug || user.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            navigate(`/${slugToUse}/dashboard`);
+          } else {
+            navigate('/dashboard');
+          }
         }
       } else {
         toast({
           title: "Access Denied",
-          description: "Invalid credentials. Please check your email and password.",
+          description: "Invalid credentials. Please check your username/email and password.",
           variant: "destructive",
         });
       }
     } catch (error) {
+      console.error(error);
       toast({
         title: "System Error",
         description: "Something went wrong. Please try again later.",
@@ -104,6 +169,17 @@ export function LoginForm() {
     };
     setEmail(creds[role].email);
     setPassword(creds[role].pass);
+  };
+
+  // extended quick demo to include provincial
+  const fillDemoExtended = (role: 'provincial' | 'teacher' | 'head' | 'district' | 'admin' | 'deputy' | 'senior' | 'student') => {
+    if (role === 'provincial') {
+      setEmail('provincial@education.zm');
+      setPassword('123456');
+      return;
+    }
+    // fallback to existing mapping
+    fillDemo(role as any);
   };
 
   return (
@@ -269,15 +345,15 @@ export function LoginForm() {
           <div className="bg-white dark:bg-zinc-900 p-6 sm:p-8 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-black/50 border border-slate-100 dark:border-zinc-800">
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="email">Email address</Label>
+                <Label htmlFor="email">Email or Username (Student ID)</Label>
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="name@school.zm"
+                  type="text"
+                  placeholder="name@school.zm or Enrolment ID"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                  className="h-11 bg-transparent border-slate-200 dark:border-zinc-800 focus:bg-white dark:focus:bg-zinc-800 transition-all placeholder:text-slate-400"
                 />
               </div>
               <div className="space-y-2">
@@ -292,7 +368,7 @@ export function LoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                  className="h-11 bg-transparent border-slate-200 dark:border-zinc-800 focus:bg-white dark:focus:bg-zinc-800 transition-all placeholder:text-slate-400"
                 />
               </div>
 
@@ -319,46 +395,52 @@ export function LoginForm() {
               <p className="text-xs text-center text-slate-500 mb-4 uppercase tracking-wider font-medium">Quick Demo Access</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
-                  onClick={() => fillDemo('admin')}
+                  onClick={() => fillDemoExtended('admin')}
                   className="text-xs p-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-semibold transition-all shadow-md hover:shadow-lg"
                 >
                   Super Admin
                 </button>
                 <button
-                  onClick={() => fillDemo('head')}
+                  onClick={() => fillDemoExtended('head')}
                   className="text-xs p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                 >
                   Head Teacher
                 </button>
                 <button
-                  onClick={() => fillDemo('deputy')}
+                  onClick={() => fillDemoExtended('deputy')}
                   className="text-xs p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                 >
                   Deputy
                 </button>
                 <button
-                  onClick={() => fillDemo('senior')}
+                  onClick={() => fillDemoExtended('senior')}
                   className="text-xs p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                 >
                   Senior T.
                 </button>
                 <button
-                  onClick={() => fillDemo('teacher')}
+                  onClick={() => fillDemoExtended('teacher')}
                   className="text-xs p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                 >
                   Teacher
                 </button>
                 <button
-                  onClick={() => fillDemo('student')}
+                  onClick={() => fillDemoExtended('student')}
                   className="text-xs p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                 >
                   Student
                 </button>
                 <button
-                  onClick={() => fillDemo('district')}
+                  onClick={() => fillDemoExtended('district')}
                   className="text-xs p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                 >
                   District
+                </button>
+                <button
+                  onClick={() => fillDemoExtended('provincial')}
+                  className="text-xs p-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold transition-all shadow-sm"
+                >
+                  Provincial
                 </button>
               </div>
             </div>

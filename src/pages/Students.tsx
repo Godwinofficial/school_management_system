@@ -18,7 +18,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { StorageService, Student, School, Teacher, Class } from "@/lib/storage";
+import { StorageService, Student, Teacher, Class } from "@/lib/storage";
+import { StudentService } from "@/lib/StudentService";
+import { SchoolService, School } from "@/lib/SchoolService";
 import { AuthService } from "@/lib/auth";
 import {
     Search,
@@ -65,8 +67,10 @@ import { ImportExportDialog } from "@/components/ImportExportDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useParams } from "react-router-dom"; // Added useParams to get current slug
 
 export default function Students() {
+    const { schoolSlug } = useParams(); // Capture current slug for constructing links
     const [students, setStudents] = useState<Student[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
@@ -77,6 +81,7 @@ export default function Students() {
     const [targetSchoolId, setTargetSchoolId] = useState<string>("");
     const [availableSchools, setAvailableSchools] = useState<School[]>([]);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+    const [classes, setClasses] = useState<any[]>([]);
 
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -87,32 +92,45 @@ export default function Students() {
     const userLevel = AuthService.getUserLevel();
 
     useEffect(() => {
-        // Load students based on user level and role
-        let loadedStudents = StorageService.getStudents(
-            userLevel === 'school' ? user?.school?.id : undefined
-        );
+        const fetchStudents = async () => {
+            // Load students based on user level and role
+            let loadedStudents = await StudentService.getStudents(
+                userLevel === 'school' ? user?.school?.id : undefined
+            );
 
-        // Filter students for regular teachers - only show students in their assigned classes
-        if (user?.role === 'teacher') {
-            const teacher = StorageService.getTeacher(user.id);
-            if (teacher?.assignedClassIds && teacher.assignedClassIds.length > 0) {
-                // Show students only from assigned classes
-                loadedStudents = loadedStudents.filter(student =>
-                    student.classId && teacher.assignedClassIds?.includes(student.classId)
-                );
-            } else {
-                // Show students where teacher is the class teacher
-                const teacherClasses = StorageService.getClasses(user?.school?.id)
-                    .filter(cls => cls.teacherId === teacher?.id)
-                    .map(cls => cls.id);
-                loadedStudents = loadedStudents.filter(student =>
-                    student.classId && teacherClasses.includes(student.classId)
-                );
+            // Filter students for regular teachers - only show students in their assigned classes
+            if (user?.role === 'teacher') {
+                const teacher = StorageService.getTeacher(user.id);
+                if (teacher?.assignedClassIds && teacher.assignedClassIds.length > 0) {
+                    // Show students only from assigned classes
+                    loadedStudents = loadedStudents.filter(student =>
+                        student.classId && teacher.assignedClassIds?.includes(student.classId)
+                    );
+                } else {
+                    // Show students where teacher is the class teacher
+                    const teacherClasses = StorageService.getClasses(user?.school?.id)
+                        .filter(cls => cls.teacherId === teacher?.id)
+                        .map(cls => cls.id);
+                    loadedStudents = loadedStudents.filter(student =>
+                        student.classId && teacherClasses.includes(student.classId)
+                    );
+                }
             }
-        }
-        // Head Teachers, Deputy Heads, Senior Teachers, and admins see all students
+            // Head Teachers, Deputy Heads, Senior Teachers, and admins see all students
 
-        setStudents(loadedStudents);
+            setStudents(loadedStudents);
+        };
+
+        fetchStudents();
+
+        // Load classes for mapping during import
+        const fetchClasses = async () => {
+            if (userLevel === 'school' && user?.school?.id) {
+                const schoolClasses = await SchoolService.getClasses(user.school.id);
+                setClasses(schoolClasses);
+            }
+        };
+        fetchClasses();
 
         // Load schools for transfer
         setAvailableSchools(StorageService.getSchools());
@@ -153,7 +171,7 @@ export default function Students() {
 
     const handleDeleteStudent = async (studentId: string) => {
         try {
-            StorageService.deleteStudent(studentId);
+            await StudentService.deleteStudent(studentId);
             const updatedStudents = students.filter(s => s.id !== studentId);
             setStudents(updatedStudents);
             toast({
@@ -197,64 +215,103 @@ export default function Students() {
     // Import handler
     const handleImportStudents = async (importedStudents: any[]) => {
         try {
-            // Convert imported data to app format
-            const newStudents = importedStudents.map(s => ({
-                ...s,
-                id: crypto.randomUUID(),
-                schoolId: user?.school?.id || '',
-                enrolmentNumber: s.studentId || `ENR${Date.now()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-                currentLevel: s.gradeLevel,
-                surname: s.lastName,
-                otherNames: '',
-                status: 'Active' as const,
-                overallPerformance: 'Average' as const,
-                dateOfBirth: s.dateOfBirth,
-                placeOfBirth: '',
-                nationality: 'Zambian',
-                religion: '',
-                languageSpoken: '',
-                previousSchool: '',
-                dateOfAdmission: s.enrollmentDate || new Date().toISOString().split('T')[0],
-                classId: '',
-                parentGuardian: {
-                    name: s.guardianName || '',
-                    relationship: 'Parent',
-                    phoneNumber: s.guardianPhone || '',
-                    email: s.guardianEmail || '',
-                    address: s.address || '',
-                    occupation: ''
-                },
-                emergencyContact: {
-                    name: '',
-                    relationship: '',
-                    phoneNumber: ''
-                },
-                medicalInfo: {
-                    bloodGroup: '',
-                    allergies: s.medicalInfo || '',
-                    chronicConditions: '',
-                    medications: ''
-                },
-                documents: []
-            }));
+            // Get current students for duplicate checking
+            const existingStudents = await StudentService.getStudents(user?.school?.id);
+            const enrolmentMap = new Set(existingStudents.map(s => s.enrolmentNumber.toLowerCase()));
+            const identityMap = new Set(existingStudents.map(s =>
+                `${s.firstName.toLowerCase()}|${s.surname.toLowerCase()}|${s.dateOfBirth}`
+            ));
 
-            // Save to storage
-            newStudents.forEach(student => {
-                StorageService.saveStudent(student);
-            });
+            let skippedCount = 0;
+            const studentsToAdd = [];
+
+            for (const s of importedStudents) {
+                const enrolmentId = s.studentId || '';
+                const identity = `${s.firstName.toLowerCase()}|${s.lastName.toLowerCase()}|${s.dateOfBirth}`;
+
+                // Check if student already exists
+                const isDuplicate = (enrolmentId && enrolmentMap.has(enrolmentId.toLowerCase())) ||
+                    identityMap.has(identity);
+
+                if (isDuplicate) {
+                    skippedCount++;
+                    continue;
+                }
+
+                // Find matching class from our generated classes
+                const matchedClass = classes.find(c =>
+                    c.level === parseInt(s.gradeLevel) &&
+                    (c.stream || "").toLowerCase() === (s.stream || "").toLowerCase()
+                );
+
+                studentsToAdd.push({
+                    ...s,
+                    id: crypto.randomUUID(),
+                    schoolId: user?.school?.id || '',
+                    enrolmentNumber: s.studentId || `ENR${Date.now()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+                    currentLevel: s.gradeLevel,
+                    surname: s.lastName,
+                    otherNames: '',
+                    status: 'Active' as const,
+                    overallPerformance: 'Average' as const,
+                    dateOfBirth: s.dateOfBirth,
+                    placeOfBirth: '',
+                    nationality: 'Zambian',
+                    religion: '',
+                    languageSpoken: '',
+                    previousSchool: '',
+                    dateOfAdmission: s.enrollmentDate || new Date().toISOString().split('T')[0],
+                    classId: matchedClass?.id || '',
+                    parentGuardian: {
+                        name: s.guardianName || '',
+                        relationship: 'Parent',
+                        phoneNumber: s.guardianPhone || '',
+                        email: s.guardianEmail || '',
+                        address: s.address || '',
+                        occupation: ''
+                    },
+                    emergencyContact: {
+                        name: '',
+                        relationship: '',
+                        phoneNumber: ''
+                    },
+                    medicalInfo: {
+                        bloodGroup: '',
+                        allergies: s.medicalInfo || '',
+                        chronicConditions: '',
+                        medications: ''
+                    },
+                    documents: []
+                });
+            }
+
+            if (studentsToAdd.length === 0) {
+                toast({
+                    title: "No new students",
+                    description: `All ${skippedCount} students in the file already exist in the system.`,
+                    variant: "default"
+                });
+                return;
+            }
+
+            // Save new students
+            for (const student of studentsToAdd) {
+                await StudentService.saveStudent(student as any);
+            }
 
             // Reload data
-            const loadedStudents = StorageService.getStudents(
+            const loadedStudents = await StudentService.getStudents(
                 userLevel === 'school' ? user?.school?.id : undefined
             );
             setStudents(loadedStudents);
 
             toast({
                 title: "Import Successful",
-                description: `Successfully imported ${newStudents.length} student(s).`,
+                description: `Imported ${studentsToAdd.length} new student(s). ${skippedCount > 0 ? `Skipped ${skippedCount} duplicates.` : ''}`,
                 className: "bg-emerald-500 text-white border-none"
             });
         } catch (error) {
+            console.error('Import error:', error);
             toast({
                 title: "Import Failed",
                 description: "Failed to import students. Please try again.",
@@ -282,7 +339,7 @@ export default function Students() {
         }));
     };
 
-    const handleTransferStudent = () => {
+    const handleTransferStudent = async () => {
         if (!studentToTransfer || !targetSchoolId) return;
 
         const targetSchool = availableSchools.find(s => s.id === targetSchoolId);
@@ -301,7 +358,7 @@ export default function Students() {
             academicPerformance: studentToTransfer.academicPerformance || {} // Preserve history
         };
 
-        StorageService.saveStudent(updatedStudent);
+        await StudentService.saveStudent(updatedStudent);
 
         // Update local state
         if (userLevel === 'school') {
@@ -342,7 +399,7 @@ export default function Students() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
-                        <Link to="/students/add">
+                        <Link to={`/${schoolSlug}/students/add`}>
                             <UserPlus className="h-4 w-4 mr-2" />
                             Add Student
                         </Link>
@@ -478,10 +535,10 @@ export default function Students() {
                         <div className="flex flex-wrap gap-2">
                             <Select value={levelFilter} onValueChange={setLevelFilter}>
                                 <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
-                                    <SelectValue placeholder="Level" />
+                                    <SelectValue placeholder="Grade" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Levels</SelectItem>
+                                    <SelectItem value="all">All Grades</SelectItem>
                                     {[...Array(12)].map((_, i) => (
                                         <SelectItem key={i + 1} value={(i + 1).toString()}>Grade {i + 1}</SelectItem>
                                     ))}
@@ -563,7 +620,7 @@ export default function Students() {
                                             <TableRow>
                                                 <TableHead className="w-[250px]">Student</TableHead>
                                                 <TableHead>ID Number</TableHead>
-                                                <TableHead>Level</TableHead>
+                                                <TableHead>Grade</TableHead>
                                                 <TableHead>Gender</TableHead>
                                                 <TableHead>Status</TableHead>
                                                 <TableHead>Performance</TableHead>
@@ -617,12 +674,12 @@ export default function Students() {
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem asChild>
-                                                                    <Link to={`/students/${student.id}`} className="flex items-center cursor-pointer">
+                                                                    <Link to={`/${schoolSlug}/students/${student.id}`} className="flex items-center cursor-pointer">
                                                                         <Eye className="mr-2 h-4 w-4" /> View Details
                                                                     </Link>
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem asChild>
-                                                                    <Link to={`/students/${student.id}/edit`} className="flex items-center cursor-pointer">
+                                                                    <Link to={`/${schoolSlug}/students/${student.id}/edit`} className="flex items-center cursor-pointer">
                                                                         <Edit className="mr-2 h-4 w-4" /> Edit Record
                                                                     </Link>
                                                                 </DropdownMenuItem>
@@ -699,12 +756,12 @@ export default function Students() {
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
                                                             <DropdownMenuItem asChild>
-                                                                <Link to={`/students/${student.id}`} className="flex items-center cursor-pointer">
+                                                                <Link to={`/${schoolSlug}/students/${student.id}`} className="flex items-center cursor-pointer">
                                                                     <Eye className="mr-2 h-4 w-4" /> View Details
                                                                 </Link>
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem asChild>
-                                                                <Link to={`/students/${student.id}/edit`} className="flex items-center cursor-pointer">
+                                                                <Link to={`/${schoolSlug}/students/${student.id}/edit`} className="flex items-center cursor-pointer">
                                                                     <Edit className="mr-2 h-4 w-4" /> Edit Record
                                                                 </Link>
                                                             </DropdownMenuItem>
@@ -750,7 +807,7 @@ export default function Students() {
                                             <CardContent className="pb-3 text-sm space-y-2">
                                                 <div className="grid grid-cols-2 gap-2 text-xs">
                                                     <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
-                                                        <span className="text-muted-foreground block mb-0.5">Level</span>
+                                                        <span className="text-muted-foreground block mb-0.5">Grade</span>
                                                         <span className="font-medium">Grade {student.currentLevel}</span>
                                                     </div>
                                                     <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
@@ -773,7 +830,7 @@ export default function Students() {
                                             </CardContent>
                                             <CardFooter className="pt-0 pb-4">
                                                 <Button variant="outline" size="sm" className="w-full text-xs h-8" asChild>
-                                                    <Link to={`/students/${student.id}`}>
+                                                    <Link to={`/${schoolSlug}/students/${student.id}`}>
                                                         View Profile
                                                     </Link>
                                                 </Button>

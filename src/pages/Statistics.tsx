@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthService } from "@/lib/auth";
-import { StorageService } from "@/lib/storage";
+import { supabase } from "@/lib/supabaseClient";
 import { TrendingUp, Users, Award, AlertTriangle, RefreshCw, Target } from "lucide-react";
 import {
   BarChart,
@@ -22,21 +22,93 @@ import {
   Legend
 } from 'recharts';
 
+interface StatsData {
+  totalStudents: number;
+  maleStudents: number;
+  femaleStudents: number;
+  activeStudents: number;
+  transferred: number;
+  droppedOut: number;
+  graduated: number;
+  orphans: number;
+  withDisability: number;
+}
+
 export default function Statistics() {
   const [timeFilter, setTimeFilter] = useState("current");
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<StatsData>({
+    totalStudents: 0,
+    maleStudents: 0,
+    femaleStudents: 0,
+    activeStudents: 0,
+    transferred: 0,
+    droppedOut: 0,
+    graduated: 0,
+    orphans: 0,
+    withDisability: 0
+  });
 
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
 
-  const stats = StorageService.getStatistics(
-    userLevel === 'student' ? 'school' : userLevel,
-    userLevel === 'school' || userLevel === 'student' ? user?.school?.id : undefined
-  );
+  useEffect(() => {
+    fetchStatistics();
+  }, [user?.school?.id, userLevel]);
+
+  const fetchStatistics = async () => {
+    try {
+      setLoading(true);
+
+      if (userLevel === 'school' && user?.school?.id) {
+        const { data: students } = await supabase
+          .from('students')
+          .select('*')
+          .eq('school_id', user.school.id);
+
+        if (students) {
+          setStats({
+            totalStudents: students.length,
+            maleStudents: students.filter(s => s.gender === 'Male').length,
+            femaleStudents: students.filter(s => s.gender === 'Female').length,
+            activeStudents: students.filter(s => s.status === 'active').length,
+            transferred: students.filter(s => s.status === 'transferred').length,
+            droppedOut: students.filter(s => s.status === 'dropped_out').length,
+            graduated: students.filter(s => s.status === 'graduated').length,
+            orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
+            withDisability: students.filter(s => s.special_needs === true).length
+          });
+        }
+      } else if (userLevel === 'system') {
+        const { data: students } = await supabase
+          .from('students')
+          .select('*');
+
+        if (students) {
+          setStats({
+            totalStudents: students.length,
+            maleStudents: students.filter(s => s.gender === 'Male').length,
+            femaleStudents: students.filter(s => s.gender === 'Female').length,
+            activeStudents: students.filter(s => s.status === 'active').length,
+            transferred: students.filter(s => s.status === 'transferred').length,
+            droppedOut: students.filter(s => s.status === 'dropped_out').length,
+            graduated: students.filter(s => s.status === 'graduated').length,
+            orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
+            withDisability: students.filter(s => s.special_needs === true).length
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching statistics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const refreshData = async () => {
     setRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await fetchStatistics();
     setRefreshing(false);
   };
 
@@ -69,28 +141,28 @@ export default function Statistics() {
   const keyMetrics = [
     {
       title: "Enrollment Rate",
-      value: `${calculatePercentage(stats.statusStats.active, stats.totalStudents)}%`,
+      value: `${calculatePercentage(stats.activeStudents, stats.totalStudents)}%`,
       change: "+3.2%",
       status: "excellent",
       description: "Active students vs total capacity"
     },
     {
-      title: "Academic Excellence",
-      value: `${calculatePercentage(stats.performanceStats.excellent + stats.performanceStats.good, stats.totalStudents)}%`,
-      change: "+5.1%",
+      title: "Gender Parity",
+      value: stats.maleStudents > 0 ? (stats.femaleStudents / stats.maleStudents).toFixed(2) : 'N/A',
+      change: "+2.1%",
       status: "good",
-      description: "Students with excellent/good performance"
+      description: "Female to male ratio"
     },
     {
       title: "Retention Rate",
-      value: `${calculatePercentage(stats.totalStudents - stats.statusStats.droppedOut, stats.totalStudents)}%`,
+      value: `${calculatePercentage(stats.totalStudents - stats.droppedOut, stats.totalStudents)}%`,
       change: "-0.8%",
       status: "warning",
       description: "Students continuing education"
     },
     {
       title: "Special Support",
-      value: `${calculatePercentage(stats.specialStats.orphans + stats.specialStats.withDisability, stats.totalStudents)}%`,
+      value: `${calculatePercentage(stats.orphans + stats.withDisability, stats.totalStudents)}%`,
       change: "+1.2%",
       status: "good",
       description: "Students requiring special attention"
@@ -98,17 +170,17 @@ export default function Statistics() {
   ];
 
   const genderData = [
-    { name: 'Male', value: stats.genderStats.male },
-    { name: 'Female', value: stats.genderStats.female },
+    { name: 'Male', value: stats.maleStudents },
+    { name: 'Female', value: stats.femaleStudents },
   ];
 
   const COLORS = ['#3b82f6', '#ec4899']; // Blue for Male, Pink for Female
 
-  const performanceData = [
-    { name: 'Excellent', value: stats.performanceStats.excellent, color: '#10b981' },
-    { name: 'Good', value: stats.performanceStats.good, color: '#3b82f6' },
-    { name: 'Average', value: stats.performanceStats.average, color: '#f59e0b' },
-    { name: 'Below Avg', value: stats.performanceStats.belowAverage, color: '#ef4444' },
+  const statusData = [
+    { name: 'Active', value: stats.activeStudents, color: '#10b981' },
+    { name: 'Transferred', value: stats.transferred, color: '#f59e0b' },
+    { name: 'Dropped Out', value: stats.droppedOut, color: '#ef4444' },
+    { name: 'Graduated', value: stats.graduated, color: '#3b82f6' },
   ];
 
   return (
@@ -216,7 +288,7 @@ export default function Statistics() {
             <div className="mt-4 text-center">
               <div className="text-sm font-medium">Gender Parity Index</div>
               <div className="text-2xl font-bold text-primary">
-                {stats.genderStats.male > 0 ? (stats.genderStats.female / stats.genderStats.male).toFixed(2) : 'N/A'}
+                {stats.maleStudents > 0 ? (stats.femaleStudents / stats.maleStudents).toFixed(2) : 'N/A'}
               </div>
               <div className="text-xs text-muted-foreground">Female to Male ratio</div>
             </div>
@@ -228,14 +300,14 @@ export default function Statistics() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Award className="h-5 w-5" />
-              Academic Performance
+              Student Status Distribution
             </CardTitle>
-            <CardDescription>Performance level distribution</CardDescription>
+            <CardDescription>Enrollment status breakdown</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={performanceData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                <BarChart data={statusData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12 }} />
@@ -244,7 +316,7 @@ export default function Statistics() {
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                   />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
-                    {performanceData.map((entry, index) => (
+                    {statusData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Bar>

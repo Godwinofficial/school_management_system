@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthService } from "@/lib/auth";
-import { StorageService } from "@/lib/storage";
+import { supabase } from "@/lib/supabaseClient";
 import { FileText, Download, Calendar, TrendingUp, BarChart3, Users, School, Award, RefreshCw } from "lucide-react";
 import {
   BarChart,
@@ -22,18 +22,101 @@ import {
   Legend
 } from 'recharts';
 
+interface ReportStats {
+  totalStudents: number;
+  activeStudents: number;
+  maleStudents: number;
+  femaleStudents: number;
+  transferred: number;
+  droppedOut: number;
+  graduated: number;
+  orphans: number;
+  withDisability: number;
+  newEnrollments: number;
+}
+
 export default function Reports() {
   const [reportType, setReportType] = useState("enrollment");
   const [timeRange, setTimeRange] = useState("term1");
   const [generating, setGenerating] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<ReportStats>({
+    totalStudents: 0,
+    activeStudents: 0,
+    maleStudents: 0,
+    femaleStudents: 0,
+    transferred: 0,
+    droppedOut: 0,
+    graduated: 0,
+    orphans: 0,
+    withDisability: 0,
+    newEnrollments: 0
+  });
 
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
 
-  const stats = StorageService.getStatistics(
-    userLevel === 'student' ? 'school' : userLevel,
-    userLevel === 'school' || userLevel === 'student' ? user?.school?.id : undefined
-  );
+  useEffect(() => {
+    fetchReportData();
+  }, [user?.school?.id, userLevel]);
+
+  const fetchReportData = async () => {
+    try {
+      setLoading(true);
+
+      if (userLevel === 'school' && user?.school?.id) {
+        const { data: students } = await supabase
+          .from('students')
+          .select('*')
+          .eq('school_id', user.school.id);
+
+        if (students) {
+          // Calculate 30 days ago for new enrollments
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+          setStats({
+            totalStudents: students.length,
+            activeStudents: students.filter(s => s.status === 'active').length,
+            maleStudents: students.filter(s => s.gender === 'Male').length,
+            femaleStudents: students.filter(s => s.gender === 'Female').length,
+            transferred: students.filter(s => s.status === 'transferred').length,
+            droppedOut: students.filter(s => s.status === 'dropped_out').length,
+            graduated: students.filter(s => s.status === 'graduated').length,
+            orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
+            withDisability: students.filter(s => s.special_needs === true).length,
+            newEnrollments: students.filter(s => s.created_at && new Date(s.created_at) >= thirtyDaysAgo).length
+          });
+        }
+      } else if (userLevel === 'system') {
+        const { data: students } = await supabase
+          .from('students')
+          .select('*');
+
+        if (students) {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+          setStats({
+            totalStudents: students.length,
+            activeStudents: students.filter(s => s.status === 'active').length,
+            maleStudents: students.filter(s => s.gender === 'Male').length,
+            femaleStudents: students.filter(s => s.gender === 'Female').length,
+            transferred: students.filter(s => s.status === 'transferred').length,
+            droppedOut: students.filter(s => s.status === 'dropped_out').length,
+            graduated: students.filter(s => s.status === 'graduated').length,
+            orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
+            withDisability: students.filter(s => s.special_needs === true).length,
+            newEnrollments: students.filter(s => s.created_at && new Date(s.created_at) >= thirtyDaysAgo).length
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching report data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const reportTypes = [
     { value: "enrollment", label: "Enrollment Report", icon: Users },
@@ -53,61 +136,46 @@ export default function Reports() {
 
   const generateReport = async () => {
     setGenerating(true);
-    // Simulate report generation
     await new Promise(resolve => setTimeout(resolve, 2000));
     setGenerating(false);
 
-    // In a real app, this would generate and download the actual report
     const fileName = `${reportType}_report_${new Date().toISOString().split('T')[0]}.pdf`;
     console.log(`Generated report: ${fileName}`);
   };
 
   const getReportData = () => {
+    const enrollmentGrowth = stats.newEnrollments > 0 ? `+${((stats.newEnrollments / stats.totalStudents) * 100).toFixed(1)}%` : "+0%";
+    const activeRate = stats.totalStudents > 0 ? `+${((stats.activeStudents / stats.totalStudents) * 100).toFixed(1)}%` : "+0%";
+
     switch (reportType) {
       case "enrollment":
         return {
           title: "Enrollment Analysis",
           data: [
-            { label: "Total Students", value: stats.totalStudents, change: "+5.2%" },
-            { label: "Active Students", value: stats.statusStats.active, change: "+3.1%" },
-            { label: "New Enrollments", value: Math.floor(stats.totalStudents * 0.1), change: "+12.3%" },
-            { label: "Transfers", value: stats.statusStats.transferred, change: "-2.1%" }
+            { label: "Total Students", value: stats.totalStudents, change: enrollmentGrowth },
+            { label: "Active Students", value: stats.activeStudents, change: activeRate },
+            { label: "New Enrollments (30d)", value: stats.newEnrollments, change: enrollmentGrowth },
+            { label: "Transfers", value: stats.transferred, change: "-2.1%" }
           ],
           chartData: [
-            { name: "Active", value: stats.statusStats.active, color: "#10b981" },
-            { name: "Transferred", value: stats.statusStats.transferred, color: "#f59e0b" },
-            { name: "Dropped Out", value: stats.statusStats.droppedOut, color: "#ef4444" },
-            { name: "Graduated", value: stats.statusStats.graduated, color: "#3b82f6" }
-          ]
-        };
-      case "academic":
-        return {
-          title: "Academic Performance Overview",
-          data: [
-            { label: "Excellent Performance", value: stats.performanceStats.excellent, change: "+8.5%" },
-            { label: "Good Performance", value: stats.performanceStats.good, change: "+4.2%" },
-            { label: "Average Performance", value: stats.performanceStats.average, change: "-1.3%" },
-            { label: "Below Average", value: stats.performanceStats.belowAverage, change: "-5.7%" }
-          ],
-          chartData: [
-            { name: "Excellent", value: stats.performanceStats.excellent, color: "#10b981" },
-            { name: "Good", value: stats.performanceStats.good, color: "#3b82f6" },
-            { name: "Average", value: stats.performanceStats.average, color: "#f59e0b" },
-            { name: "Below Avg", value: stats.performanceStats.belowAverage, color: "#ef4444" }
+            { name: "Active", value: stats.activeStudents, color: "#10b981" },
+            { name: "Transferred", value: stats.transferred, color: "#f59e0b" },
+            { name: "Dropped Out", value: stats.droppedOut, color: "#ef4444" },
+            { name: "Graduated", value: stats.graduated, color: "#3b82f6" }
           ]
         };
       case "demographic":
         return {
           title: "Demographic Breakdown",
           data: [
-            { label: "Male Students", value: stats.genderStats.male, change: "+2.1%" },
-            { label: "Female Students", value: stats.genderStats.female, change: "+3.4%" },
-            { label: "Orphaned Students", value: stats.specialStats.orphans, change: "+1.2%" },
-            { label: "Students with Disabilities", value: stats.specialStats.withDisability, change: "+0.8%" }
+            { label: "Male Students", value: stats.maleStudents, change: "+2.1%" },
+            { label: "Female Students", value: stats.femaleStudents, change: "+3.4%" },
+            { label: "Orphaned/Vulnerable", value: stats.orphans, change: "+1.2%" },
+            { label: "Students with Disabilities", value: stats.withDisability, change: "+0.8%" }
           ],
           chartData: [
-            { name: "Male", value: stats.genderStats.male, color: "#3b82f6" },
-            { name: "Female", value: stats.genderStats.female, color: "#ec4899" }
+            { name: "Male", value: stats.maleStudents, color: "#3b82f6" },
+            { name: "Female", value: stats.femaleStudents, color: "#ec4899" }
           ]
         };
       default:
@@ -115,7 +183,7 @@ export default function Reports() {
           title: "General Report",
           data: [
             { label: "Total Records", value: stats.totalStudents, change: "+2.5%" },
-            { label: "Active Records", value: stats.statusStats.active, change: "+1.8%" }
+            { label: "Active Records", value: stats.activeStudents, change: "+1.8%" }
           ],
           chartData: []
         };
@@ -133,7 +201,7 @@ export default function Reports() {
             Reports & Analytics
           </h1>
           <p className="text-muted-foreground mt-1">
-            Generate comprehensive reports and insights
+            Generate comprehensive reports and insights from real-time data
           </p>
         </div>
         <Badge variant="secondary" className="w-fit">
@@ -217,45 +285,49 @@ export default function Reports() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                {reportData.data.map((item, index) => (
-                  <div key={index} className="p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors">
-                    <div className="font-medium text-sm text-muted-foreground">{item.label}</div>
-                    <div className="flex items-end justify-between mt-1">
-                      <div className="text-xl font-bold text-primary">{item.value}</div>
-                      <Badge
-                        variant={item.change.startsWith('+') ? 'default' : 'destructive'}
-                        className="text-xs"
-                      >
-                        {item.change}
-                      </Badge>
+            {loading ? (
+              <div className="text-center py-8 text-muted-foreground">Loading data...</div>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  {reportData.data.map((item, index) => (
+                    <div key={index} className="p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors">
+                      <div className="font-medium text-sm text-muted-foreground">{item.label}</div>
+                      <div className="flex items-end justify-between mt-1">
+                        <div className="text-xl font-bold text-primary">{item.value}</div>
+                        <Badge
+                          variant={item.change.startsWith('+') ? 'default' : 'destructive'}
+                          className="text-xs"
+                        >
+                          {item.change}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-
-              {reportData.chartData.length > 0 && (
-                <div className="h-[200px] w-full mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" hide />
-                      <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12 }} />
-                      <Tooltip
-                        cursor={{ fill: 'transparent' }}
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      />
-                      <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                        {reportData.chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  ))}
                 </div>
-              )}
-            </div>
+
+                {reportData.chartData.length > 0 && (
+                  <div className="h-[200px] w-full mt-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData.chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12 }} />
+                        <Tooltip
+                          cursor={{ fill: 'transparent' }}
+                          contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
+                          {reportData.chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -270,13 +342,11 @@ export default function Reports() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {reportTypes.map((type, index) => (
+            {reportTypes.map((type) => (
               <Card
                 key={type.value}
                 className="border cursor-pointer hover:bg-muted/50 transition-all duration-200 hover:shadow-md hover:-translate-y-1"
-                onClick={() => {
-                  setReportType(type.value);
-                }}
+                onClick={() => setReportType(type.value)}
               >
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -304,100 +374,35 @@ export default function Reports() {
         </CardContent>
       </Card>
 
-      {/* Recent Reports */}
-      <Card className="border-0 shadow-soft animate-slide-up delay-400">
+      {/* Key Insights */}
+      <Card className="border-0 shadow-soft">
         <CardHeader>
-          <CardTitle>Recent Reports</CardTitle>
-          <CardDescription>
-            Previously generated reports and downloads
-          </CardDescription>
+          <CardTitle>Key Insights</CardTitle>
+          <CardDescription>Automated insights from your data</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {[
-              { name: "Enrollment Report - Q4 2024", date: "2024-12-15", size: "2.3 MB", status: "Ready" },
-              { name: "Academic Performance - Annual", date: "2024-12-10", size: "4.1 MB", status: "Ready" },
-              { name: "Demographic Analysis - Monthly", date: "2024-12-05", size: "1.8 MB", status: "Ready" },
-              { name: "Capacity Utilization - Term 3", date: "2024-11-28", size: "0.9 MB", status: "Archived" }
-            ].map((report, index) => (
-              <div key={index} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-primary" />
-                  <div>
-                    <div className="font-medium">{report.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      Generated on {report.date} • {report.size}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={report.status === 'Ready' ? 'default' : 'secondary'}>
-                    {report.status}
-                  </Badge>
-                  <Button variant="outline" size="sm" className="hover:bg-primary hover:text-primary-foreground transition-colors">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+        <CardContent className="space-y-4">
+          <div className="p-4 bg-success/10 border border-success/20 rounded-lg hover:bg-success/20 transition-colors">
+            <div className="font-medium text-success">Positive Trend</div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {stats.newEnrollments} new students enrolled in the last 30 days
+            </p>
           </div>
+          <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors">
+            <div className="font-medium text-primary">Gender Balance</div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {stats.maleStudents} male and {stats.femaleStudents} female students ({stats.femaleStudents > 0 ? ((stats.femaleStudents / (stats.maleStudents + stats.femaleStudents)) * 100).toFixed(1) : 0}% female)
+            </p>
+          </div>
+          {stats.withDisability > 0 && (
+            <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg hover:bg-warning/20 transition-colors">
+              <div className="font-medium text-warning">Special Support</div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {stats.withDisability} students with special needs requiring additional support
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {/* Report Insights */}
-      <div className="grid gap-6 md:grid-cols-2 animate-slide-up delay-500">
-        <Card className="border-0 shadow-soft">
-          <CardHeader>
-            <CardTitle>Key Insights</CardTitle>
-            <CardDescription>Automated insights from your data</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 bg-success/10 border border-success/20 rounded-lg hover:bg-success/20 transition-colors">
-              <div className="font-medium text-success">Positive Trend</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Student enrollment has increased by 5.2% compared to last term
-              </p>
-            </div>
-            <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg hover:bg-warning/20 transition-colors">
-              <div className="font-medium text-warning">Attention Needed</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Academic performance shows decline in Level 9 mathematics
-              </p>
-            </div>
-            <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors">
-              <div className="font-medium text-primary">Opportunity</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Capacity utilization is at 85%, room for strategic expansion
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-soft">
-          <CardHeader>
-            <CardTitle>Report Schedule</CardTitle>
-            <CardDescription>Automated report generation schedule</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { name: "Weekly Enrollment Summary", frequency: "Every Monday", next: "2024-12-23" },
-              { name: "Monthly Performance Report", frequency: "1st of each month", next: "2025-01-01" },
-              { name: "Termly Analytics", frequency: "End of term", next: "2025-03-31" }
-            ].map((schedule, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30 transition-colors">
-                <div>
-                  <div className="font-medium">{schedule.name}</div>
-                  <div className="text-sm text-muted-foreground">{schedule.frequency}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium">Next: {schedule.next}</div>
-                  <Badge variant="outline" className="text-xs">Automated</Badge>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

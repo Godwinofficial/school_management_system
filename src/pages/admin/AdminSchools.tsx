@@ -17,13 +17,13 @@ export default function AdminSchools() {
         loadSchools();
     }, []);
 
-    const loadSchools = () => {
-        const allSchools = SchoolService.getAllSchools();
+    const loadSchools = async () => {
+        const allSchools = await SchoolService.getAllSchools();
         setSchools(allSchools);
     };
 
-    const handleToggleStatus = (schoolId: string) => {
-        const result = SchoolService.toggleSchoolStatus(schoolId);
+    const handleToggleStatus = async (schoolId: string) => {
+        const result = await SchoolService.toggleSchoolStatus(schoolId);
         if (result) {
             toast({
                 title: "Status Updated",
@@ -33,9 +33,9 @@ export default function AdminSchools() {
         }
     };
 
-    const handleDelete = (schoolId: string, schoolName: string) => {
+    const handleDelete = async (schoolId: string, schoolName: string) => {
         if (window.confirm(`Are you sure you want to delete ${schoolName}? This action cannot be undone.`)) {
-            const success = SchoolService.deleteSchool(schoolId);
+            const success = await SchoolService.deleteSchool(schoolId);
             if (success) {
                 toast({
                     title: "School Deleted",
@@ -44,6 +44,42 @@ export default function AdminSchools() {
                 });
                 loadSchools();
             }
+        }
+    };
+
+    const handleSeed = async () => {
+        try {
+            await SchoolService.createSchool({
+                name: "Lusaka Primary School",
+                centerNumber: "LPS001",
+                type: "Primary",
+                location: {
+                    province: "Lusaka",
+                    district: "Lusaka",
+                    ward: "Ward 1"
+                },
+                contact: {
+                    email: "head@school.zm",
+                    phone: "0977000000"
+                },
+                subscriptionPlanId: "standard",
+                billingCycle: "annual",
+                startDate: new Date().toISOString()
+            }, "system");
+
+            toast({
+                title: "Data Seeded",
+                description: "Sample school created successfully.",
+                className: "bg-green-600 text-white"
+            });
+            loadSchools();
+        } catch (error) {
+            console.error(error);
+            toast({
+                title: "Seeding Failed",
+                description: "Could not create sample data.",
+                variant: "destructive"
+            });
         }
     };
 
@@ -149,13 +185,19 @@ export default function AdminSchools() {
                 <CardContent>
                     {filteredSchools.length === 0 ? (
                         <div className="text-center py-12">
-                            <p className="text-muted-foreground">No schools found</p>
-                            <Link to="/admin/schools/add">
-                                <Button className="mt-4" variant="outline">
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    Add Your First School
+                            <p className="text-muted-foreground">No schools found in the database.</p>
+                            <div className="flex gap-4 justify-center mt-4">
+                                <Link to="/admin/schools/add">
+                                    <Button variant="outline">
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Add Your First School
+                                    </Button>
+                                </Link>
+                                <Button onClick={handleSeed} variant="secondary">
+                                    <Power className="w-4 h-4 mr-2" />
+                                    Seed Sample Data
                                 </Button>
-                            </Link>
+                            </div>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">

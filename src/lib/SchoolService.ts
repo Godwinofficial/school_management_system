@@ -1,7 +1,7 @@
-import { StorageService } from "./storage";
-import { AuthService, User, DEFAULT_PERMISSIONS } from "./auth";
+import { supabase } from "./supabaseClient";
 import { SUBSCRIPTION_PLANS } from "./SchoolStructure";
 
+// Re-export interfaces
 export interface SchoolData {
     name: string;
     centerNumber: string;
@@ -52,82 +52,100 @@ export interface School {
         totalStudents: number;
         totalTeachers: number;
     };
+    slug: string;
 }
 
 export class SchoolService {
-    private static readonly SCHOOLS_EXTENDED_KEY = 'nrs_schools_extended';
 
-    static getAllSchools(): School[] {
-        const schools = StorageService.getSchools();
-        const extendedData = this.getExtendedData();
+    // Helper to map DB row to School object
+    private static mapToSchool(row: any): School {
+        // Use default plan if missing
+        const planId = row.subscription_plan_id || 'trial';
+        const subPlan = SUBSCRIPTION_PLANS[planId];
 
-        return schools.map(school => {
-            const ext = extendedData[school.id] || {};
-            const stats = StorageService.getStatistics('school', school.id);
-
-            // Default subscription if missing
-            const subPlan = SUBSCRIPTION_PLANS[ext.subscriptionPlanId || 'trial'];
-
-            return {
-                id: school.id,
-                name: school.name,
-                centerNumber: school.centerNumber,
-                type: school.type,
-                status: ext.status || 'active',
-                location: {
-                    province: school.province,
-                    district: school.district,
-                    ward: school.ward,
+        return {
+            id: row.id,
+            name: row.name,
+            centerNumber: row.center_number,
+            status: row.status || 'active',
+            type: row.type,
+            location: {
+                province: row.province,
+                district: row.district,
+                ward: row.ward || undefined,
+            },
+            contact: {
+                email: row.email || '',
+                phone: row.phone,
+            },
+            subscription: {
+                plan: {
+                    id: subPlan?.id || 'trial',
+                    name: subPlan?.name || 'Trial',
+                    features: subPlan?.features || { maxStudents: 0, maxTeachers: 0 },
                 },
-                contact: {
-                    email: ext.email || 'N/A',
-                    phone: ext.phone,
-                },
-                subscription: {
-                    plan: {
-                        id: subPlan.id,
-                        name: subPlan.name,
-                        features: {
-                            maxStudents: subPlan.features.maxStudents,
-                            maxTeachers: subPlan.features.maxTeachers,
-                        }
-                    },
-                    billingCycle: ext.billingCycle || 'monthly',
-                    startDate: ext.startDate || new Date().toISOString(),
-                    expiryDate: ext.expiryDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                },
-                stats: {
-                    totalStudents: stats.totalStudents,
-                    totalTeachers: stats.totalTeachers,
-                }
-            };
-        });
-    }
-
-    static getSchool(id: string): School | null {
-        const schools = this.getAllSchools();
-        return schools.find(s => s.id === id) || null;
-    }
-
-    static createSchool(data: SchoolData, createdBy: string): School {
-        // 1. Create base school in StorageService
-        const newSchoolId = `school_${Date.now()}`;
-        const baseSchool = {
-            id: newSchoolId,
-            name: data.name,
-            centerNumber: data.centerNumber,
-            province: data.location.province,
-            district: data.location.district,
-            ward: data.location.ward || '',
-            type: data.type as any,
-            standardCapacity: 500, // Default
-            totalEnrolment: 0,
+                billingCycle: row.billing_cycle || 'monthly',
+                startDate: row.subscription_start_date || new Date().toISOString(),
+                expiryDate: row.subscription_expiry_date || new Date().toISOString(),
+            },
+            stats: {
+                totalStudents: row.total_enrolment || 0,
+                totalTeachers: 0, // fetching this would require a separate count query usually
+            },
+            slug: row.slug || row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
         };
-        StorageService.saveSchool(baseSchool);
+    }
 
-        // 2. Save extended data
-        const extendedData = this.getExtendedData();
-        const plan = SUBSCRIPTION_PLANS[data.subscriptionPlanId];
+    static async getAllSchools(): Promise<School[]> {
+        const { data, error } = await supabase
+            .from('schools')
+            .select('*');
+        // .order('created_at', { ascending: false }); // Commented out until column is added
+
+        if (error) {
+            console.error('Error fetching schools:', error);
+            return [];
+        }
+
+        return data.map(this.mapToSchool);
+    }
+
+    static async getSchool(id: string): Promise<School | null> {
+        const { data, error } = await supabase
+            .from('schools')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) {
+            console.error('Error fetching school:', error);
+            return null;
+        }
+
+        return this.mapToSchool(data);
+    }
+
+    static async getSchoolBySlug(slug: string): Promise<School | null> {
+        const { data, error } = await supabase
+            .from('schools')
+            .select('*')
+            .eq('slug', slug)
+            .single();
+
+        if (error) {
+            console.error('Error fetching school by slug:', error);
+            return null;
+        }
+
+        return this.mapToSchool(data);
+    }
+
+    static async createSchool(data: SchoolData, createdBy: string): Promise<School> {
+        // Generate a readable slug for the School ID
+        // e.g. "Lusaka Primary" + "101" -> "lusaka-primary-101"
+        const slugName = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        const slugCenter = data.centerNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const newSchoolId = `${slugName}-${slugCenter}`;
 
         // Calculate expiry
         const startDate = new Date(data.startDate);
@@ -138,150 +156,275 @@ export class SchoolService {
             expiryDate.setMonth(expiryDate.getMonth() + 1);
         }
 
-        extendedData[newSchoolId] = {
-            status: 'active',
+        // Generate a clean slug for the school
+        const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+        const dbPayload = {
+            id: newSchoolId,
+            name: data.name,
+            slug: slug, // Explicitly save slug
+            center_number: data.centerNumber,
+            province: data.location.province,
+            district: data.location.district,
+            ward: data.location.ward,
+            type: data.type,
             email: data.contact.email,
             phone: data.contact.phone,
-            subscriptionPlanId: data.subscriptionPlanId,
-            billingCycle: data.billingCycle,
-            startDate: data.startDate,
-            expiryDate: expiryDate.toISOString().split('T')[0],
-            createdBy,
-            createdAt: new Date().toISOString(),
+            status: 'active',
+            standard_capacity: 500,
+            total_enrolment: 0
         };
-        this.saveExtendedData(extendedData);
 
-        // 3. Create Head Teacher User
-        const headTeacherEmail = data.contact.email;
-        const headTeacherPassword = 'password123'; // Default temporary password
+        const { data: inserted, error } = await supabase
+            .from('schools')
+            .insert([dbPayload])
+            .select()
+            .single();
 
-        AuthService.registerUser({
-            id: `user_${Date.now()}`,
-            email: headTeacherEmail,
-            firstName: 'Head',
-            lastName: 'Teacher',
-            role: 'head_teacher',
-            permissions: DEFAULT_PERMISSIONS.head_teacher,
-            school: {
-                id: newSchoolId,
-                name: data.name,
-                district: data.location.district,
-                province: data.location.province,
-                centerNumber: data.centerNumber,
-                type: data.type,
-                totalEnrolment: 0,
-                standardCapacity: 500
-            }
-        });
+        if (error) {
+            console.error('Error creating school:', error);
+            throw error;
+        }
 
-        // 4. Create Senior Teacher User
-        const seniorTeacherEmail = `senior.${data.contact.email}`; // Convention: senior.school@email.com
+        // Create initial profiles (Head & Senior Teacher)
+        await this.createInitialProfiles(inserted.id, data);
 
-        AuthService.registerUser({
-            id: `user_${Date.now() + 1}`,
-            email: seniorTeacherEmail,
-            firstName: 'Senior',
-            lastName: 'Teacher',
-            role: 'senior_teacher' as any,
-            permissions: DEFAULT_PERMISSIONS.senior_teacher,
-            school: {
-                id: newSchoolId,
-                name: data.name,
-                district: data.location.district,
-                province: data.location.province,
-                centerNumber: data.centerNumber,
-                type: data.type,
-                totalEnrolment: 0,
-                standardCapacity: 500
-            }
-        });
+        // Initialize classes
+        await this.initializeClasses(inserted.id);
 
-        // 5. Initialize default classes (Grade 1-12)
-        this.initializeClasses(newSchoolId);
-
-        return this.getSchool(newSchoolId)!;
+        return this.mapToSchool(inserted);
     }
 
-    static toggleSchoolStatus(id: string): School | null {
-        const extendedData = this.getExtendedData();
-        if (extendedData[id]) {
-            extendedData[id].status = extendedData[id].status === 'active' ? 'inactive' : 'active';
-            this.saveExtendedData(extendedData);
-            return this.getSchool(id);
+    static async updateSchool(id: string, data: Partial<SchoolData>): Promise<School | null> {
+        const updates: any = {};
+        if (data.name) updates.name = data.name;
+        if (data.centerNumber) updates.center_number = data.centerNumber;
+        if (data.location?.province) updates.province = data.location.province;
+        if (data.location?.district) updates.district = data.location.district;
+        if (data.location?.ward) updates.ward = data.location.ward;
+        if (data.type) updates.type = data.type;
+        if (data.contact?.email) updates.email = data.contact.email;
+        if (data.contact?.phone) updates.phone = data.contact.phone;
+        if (data.subscriptionPlanId) updates.subscription_plan_id = data.subscriptionPlanId;
+        if (data.billingCycle) updates.billing_cycle = data.billingCycle;
+
+        const { data: updated, error } = await supabase
+            .from('schools')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error updating school:', error);
+            return null;
         }
-        return null;
+
+        return this.mapToSchool(updated);
     }
 
-    static updateSchool(id: string, data: Partial<SchoolData>): School | null {
-        // 1. Update base school in StorageService
-        const schools = StorageService.getSchools();
-        const schoolIndex = schools.findIndex(s => s.id === id);
+    static async toggleSchoolStatus(id: string): Promise<School | null> {
+        // First get current status
+        const { data: current } = await supabase.from('schools').select('status').eq('id', id).single();
+        if (!current) return null;
 
-        if (schoolIndex !== -1) {
-            const updatedSchool = { ...schools[schoolIndex] };
-            if (data.name) updatedSchool.name = data.name;
-            if (data.centerNumber) updatedSchool.centerNumber = data.centerNumber;
-            if (data.location) {
-                updatedSchool.province = data.location.province;
-                updatedSchool.district = data.location.district;
-                updatedSchool.ward = data.location.ward || updatedSchool.ward;
-            }
-            if (data.type) updatedSchool.type = data.type as any;
+        const newStatus = current.status === 'active' ? 'inactive' : 'active';
 
-            schools[schoolIndex] = updatedSchool;
-            localStorage.setItem('nrs_schools', JSON.stringify(schools));
+        const { data: updated, error } = await supabase
+            .from('schools')
+            .update({ status: newStatus })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error toggling status:', error);
+            return null;
         }
 
-        // 2. Update extended data
-        const extendedData = this.getExtendedData();
-        if (extendedData[id]) {
-            if (data.contact?.email) extendedData[id].email = data.contact.email;
-            if (data.contact?.phone) extendedData[id].phone = data.contact.phone;
-            if (data.subscriptionPlanId) extendedData[id].subscriptionPlanId = data.subscriptionPlanId;
-            if (data.billingCycle) extendedData[id].billingCycle = data.billingCycle;
-
-            this.saveExtendedData(extendedData);
-        }
-
-        return this.getSchool(id);
+        return this.mapToSchool(updated);
     }
 
-    static deleteSchool(id: string): boolean {
-        // Delete from extended data
-        const extendedData = this.getExtendedData();
-        if (extendedData[id]) {
-            delete extendedData[id];
-            this.saveExtendedData(extendedData);
-            return true;
+    static async deleteSchool(id: string): Promise<boolean> {
+        const { error } = await supabase
+            .from('schools')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('Error deleting school:', error);
+            return false;
         }
-        return false;
+
+        return true;
     }
 
     static sendWelcomeEmail(school: School): void {
         console.log(`Sending welcome email to ${school.contact.email} for ${school.name}`);
-        // Mock email sending
+        // In real prod, call an Edge Function here
     }
 
-    private static getExtendedData(): Record<string, any> {
-        return JSON.parse(localStorage.getItem(this.SCHOOLS_EXTENDED_KEY) || '{}');
+    private static async createInitialProfiles(schoolId: string, data: SchoolData) {
+        const headEmail = data.contact.email;
+        const seniorEmail = `senior.${data.contact.email}`;
+
+        const profiles = [
+            {
+                email: headEmail,
+                first_name: 'Head',
+                last_name: 'Teacher',
+                role: 'head_teacher',
+                school_id: schoolId,
+                province: data.location.province,
+                district: data.location.district,
+                metadata: {
+                    permissions: ['manage_staff', 'manage_students', 'manage_classes', 'manage_assessments', 'view_reports', 'manage_settings', 'manage_finance']
+                }
+            },
+            {
+                email: seniorEmail,
+                first_name: 'Senior',
+                last_name: 'Teacher',
+                role: 'senior_teacher',
+                school_id: schoolId,
+                province: data.location.province,
+                district: data.location.district,
+                metadata: {
+                    permissions: ['manage_students', 'manage_classes', 'manage_assessments', 'view_reports']
+                }
+            }
+        ];
+
+        const { error } = await supabase
+            .from('profiles')
+            .insert(profiles);
+
+        if (error) {
+            console.error('Error creating profiles:', error);
+        }
     }
 
-    private static saveExtendedData(data: Record<string, any>): void {
-        localStorage.setItem(this.SCHOOLS_EXTENDED_KEY, JSON.stringify(data));
+    static async getClasses(schoolId: string): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('classes')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('level', { ascending: true },)
+            .order('name', { ascending: true });
+
+        if (error) {
+            console.error('Error fetching classes:', error);
+            return [];
+        }
+
+        return data;
     }
 
-    private static initializeClasses(schoolId: string): void {
-        // Create Grade 1 to 12 classes
+    static async createClass(classData: any): Promise<any> {
+        const { data, error } = await supabase
+            .from('classes')
+            .insert(classData)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error creating class:', error);
+            throw error;
+        }
+
+        return data;
+    }
+
+    static async createClasses(classesData: any[]): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('classes')
+            .insert(classesData)
+            .select();
+
+        if (error) {
+            console.error('Error creating batch classes:', error);
+            throw error;
+        }
+
+        return data || [];
+    }
+
+    static async updateClass(id: string, updates: any): Promise<any> {
+        const { data, error } = await supabase
+            .from('classes')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error updating class:', error);
+            throw error;
+        }
+
+        return data;
+    }
+
+    static async deleteClass(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('classes')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('Error deleting class:', error);
+            throw error;
+        }
+    }
+
+    static async getTeachers(schoolId: string): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name, role')
+            .eq('school_id', schoolId)
+            .in('role', ['head_teacher', 'deputy_head', 'senior_teacher', 'class_teacher']);
+
+        if (error) {
+            console.error('Error fetching teachers:', error);
+            return [];
+        }
+
+        return data;
+    }
+
+    static async getSubjects(schoolId: string): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('subjects')
+            .select('*');
+
+        if (error) {
+            console.error('Error fetching subjects:', error);
+            return [];
+        }
+
+        return data;
+    }
+
+    private static async initializeClasses(schoolId: string) {
+        const classes = [];
         for (let i = 1; i <= 12; i++) {
-            StorageService.saveClass({
+            classes.push({
                 id: `${schoolId}_g${i}a`,
-                schoolId: schoolId,
+                school_id: schoolId,
                 name: `Grade ${i}A`,
                 level: i,
                 stream: 'A',
-                capacity: 40,
-                subjects: []
+                capacity: 40
             });
+        }
+
+        const { error } = await supabase
+            .from('classes')
+            .insert(classes);
+
+        if (error) {
+            console.error('Error initializing classes:', error);
         }
     }
 }
+

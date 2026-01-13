@@ -15,12 +15,18 @@ export default function StudentPortal() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user && user.role === 'student') {
-      // In a real app, you'd match by user ID or enrollment number
-      const students = StorageService.getStudents(user.school?.id);
-      const studentRecord = students.find(s => s.firstName === user.firstName && s.surname === user.lastName);
-      setStudent(studentRecord || null);
-    }
+    const fetchStudentData = async () => {
+      if (user && user.role === 'student' && user.id) {
+        try {
+          const { StudentService } = await import("@/lib/StudentService");
+          const studentRecord = await StudentService.getStudent(user.id);
+          setStudent(studentRecord);
+        } catch (error) {
+          console.error("Failed to fetch student record:", error);
+        }
+      }
+    };
+    fetchStudentData();
   }, [user]);
 
   if (!user || user.role !== 'student') {
@@ -50,6 +56,7 @@ export default function StudentPortal() {
   const age = currentYear - birthYear;
 
   const getLatestPerformance = () => {
+    if (!student?.academicPerformance) return null;
     const levels = Object.keys(student.academicPerformance).map(Number).sort((a, b) => b - a);
     return levels.length > 0 ? student.academicPerformance[levels[0]] : null;
   };
@@ -59,23 +66,23 @@ export default function StudentPortal() {
 
   const generateReportCard = () => {
     const doc = new jsPDF();
-    
+
     // Header
     doc.setFontSize(18);
     doc.text('STUDENT REPORT CARD', 20, 20);
-    
+
     // School Info
     doc.setFontSize(12);
     doc.text(`School: ${user.school?.name}`, 20, 35);
     doc.text(`Center Number: ${user.school?.centerNumber}`, 20, 45);
     doc.text(`Academic Year: ${new Date().getFullYear()}`, 20, 55);
-    
+
     // Student Info
     doc.text(`Student: ${student.firstName} ${student.surname}`, 20, 70);
     doc.text(`ID: ${student.enrolmentNumber}`, 20, 80);
     doc.text(`Level: ${student.currentLevel}`, 20, 90);
     doc.text(`Gender: ${student.gender}`, 20, 100);
-    
+
     // Performance
     if (latestPerformance) {
       doc.text('ACADEMIC PERFORMANCE:', 20, 120);
@@ -84,15 +91,15 @@ export default function StudentPortal() {
       doc.text(`C Grades: ${latestPerformance.C}`, 30, 155);
       doc.text(`Overall: ${student.overallPerformance}`, 30, 165);
     }
-    
+
     // Career Pathways
-    if (student.careerPathways.length > 0) {
+    if (student.careerPathways && student.careerPathways.length > 0) {
       doc.text('CAREER PATHWAYS:', 20, 185);
       student.careerPathways.forEach((pathway, index) => {
         doc.text(`• ${pathway}`, 30, 195 + (index * 10));
       });
     }
-    
+
     doc.save(`${student.firstName}_${student.surname}_Report_Card.pdf`);
   };
 
@@ -113,18 +120,18 @@ export default function StudentPortal() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button 
+            <Button
               onClick={() => generateReportCard()}
               className="flex items-center gap-2"
             >
               <FileText className="h-4 w-4" />
               Download Report Card
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 AuthService.logout();
-                navigate('/');
+                // Redirection is now handled by AuthService.logout()
               }}
             >
               Logout
@@ -145,7 +152,7 @@ export default function StudentPortal() {
               <div>
                 <span className="text-sm font-medium">Full Name:</span>
                 <p className="text-sm text-muted-foreground">
-                  {student.firstName} {student.otherNames} {student.surname}
+                  {student.firstName} {student.otherNames || ''} {student.surname}
                 </p>
               </div>
               <div>
@@ -182,8 +189,8 @@ export default function StudentPortal() {
               <div>
                 <span className="text-sm font-medium">Status:</span>
                 <Badge className={
-                  student.status === 'Active' ? 'bg-success text-success-foreground' : 
-                  'bg-muted text-muted-foreground'
+                  student.status === 'Active' ? 'bg-success text-success-foreground' :
+                    'bg-muted text-muted-foreground'
                 }>
                   {student.status}
                 </Badge>
@@ -207,9 +214,9 @@ export default function StudentPortal() {
                 <span className="text-sm font-medium">Overall Performance:</span>
                 <Badge className={
                   student.overallPerformance === 'Excellent' ? 'bg-success text-success-foreground' :
-                  student.overallPerformance === 'Good' ? 'bg-primary text-primary-foreground' :
-                  student.overallPerformance === 'Average' ? 'bg-warning text-warning-foreground' :
-                  'bg-muted text-muted-foreground'
+                    student.overallPerformance === 'Good' ? 'bg-primary text-primary-foreground' :
+                      student.overallPerformance === 'Average' ? 'bg-warning text-warning-foreground' :
+                        'bg-muted text-muted-foreground'
                 }>
                   {student.overallPerformance}
                 </Badge>
@@ -255,8 +262,8 @@ export default function StudentPortal() {
                       {latestPerformance.A} / {totalSubjects}
                     </span>
                   </div>
-                  <Progress 
-                    value={totalSubjects > 0 ? (latestPerformance.A / totalSubjects) * 100 : 0} 
+                  <Progress
+                    value={totalSubjects > 0 ? (latestPerformance.A / totalSubjects) * 100 : 0}
                     className="h-3"
                   />
                 </div>
@@ -267,8 +274,8 @@ export default function StudentPortal() {
                       {latestPerformance.B} / {totalSubjects}
                     </span>
                   </div>
-                  <Progress 
-                    value={totalSubjects > 0 ? (latestPerformance.B / totalSubjects) * 100 : 0} 
+                  <Progress
+                    value={totalSubjects > 0 ? (latestPerformance.B / totalSubjects) * 100 : 0}
                     className="h-3"
                   />
                 </div>
@@ -279,8 +286,8 @@ export default function StudentPortal() {
                       {latestPerformance.C} / {totalSubjects}
                     </span>
                   </div>
-                  <Progress 
-                    value={totalSubjects > 0 ? (latestPerformance.C / totalSubjects) * 100 : 0} 
+                  <Progress
+                    value={totalSubjects > 0 ? (latestPerformance.C / totalSubjects) * 100 : 0}
                     className="h-3"
                   />
                 </div>

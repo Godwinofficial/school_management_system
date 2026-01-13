@@ -42,6 +42,8 @@ import Curriculum from "./pages/Curriculum";
 import Examinations from "./pages/Examinations";
 import Districts from "./pages/Districts";
 import Provinces from "./pages/Provinces";
+import Subjects from "./pages/Subjects";
+import ResultsEntry from "./pages/ResultsEntry";
 import Attendance from "./pages/Attendance";
 import Timetable from "./pages/Timetable";
 import Finance from "./pages/Finance";
@@ -121,7 +123,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />
             <div className="flex flex-col">
-              <h1 className="text-lg font-semibold">{getHeaderTitle()}</h1>
+              <h1 className="text-lg font-semibold text-foreground">{getHeaderTitle()}</h1>
               {user?.school && (
                 <p className="text-xs text-muted-foreground">
                   {user.school.type} School • {user.school.district}, {user.school.province}
@@ -168,25 +170,40 @@ const App = () => {
             <Routes>
               <Route path="/" element={
                 isAuthenticated ? (
-                  AuthService.getCurrentUser()?.role === 'student'
-                    ? <Navigate to="/student" />
-                    : AuthService.getCurrentUser()?.role === 'class_teacher'
-                      ? <Navigate to="/teacher-dashboard" />
-                      : <Navigate to="/dashboard" />
+                  // Helper IIFE to safely get slug
+                  (() => {
+                    const user = AuthService.getCurrentUser();
+                    // Fallback slug generation if missing in user object but school exists
+                    const schoolSlug = user?.school?.slug ||
+                      (user?.school?.name ? user.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : undefined);
+
+                    if (user?.role === 'student') {
+                      return <Navigate to={`/${schoolSlug || 'national'}/student`} />;
+                    }
+                    if (user?.role === 'class_teacher') {
+                      return <Navigate to={`/${schoolSlug}/teacher-dashboard`} />;
+                    }
+                    if (AuthService.getUserLevel() === 'school' && user?.school) {
+                      return <Navigate to={`/${schoolSlug}/dashboard`} />;
+                    }
+                    return <Navigate to="/dashboard" />;
+                  })()
                 ) : (
                   <LoginForm />
                 )
               } />
 
+              <Route path="/login" element={<LoginForm />} />
+
               {/* Student Portal */}
-              <Route path="/student" element={
+              <Route path="/:schoolSlug/student" element={
                 <ProtectedRoute requiredRoles="student">
                   <StudentPortal />
                 </ProtectedRoute>
               } />
 
               {/* Teacher Dash board */}
-              <Route path="/teacher-dashboard" element={
+              <Route path="/:schoolSlug/teacher-dashboard" element={
                 <ProtectedRoute requiredRoles="class_teacher">
                   <AppLayout>
                     <TeacherDashboard />
@@ -196,6 +213,22 @@ const App = () => {
 
               {/* Admin/Staff R outes */}
               <Route path="/dashboard" element={
+                <ProtectedRoute requiredRoles={[
+                  'district_education_director', 'district_standards_officer', 'district_education_officer',
+                  'district_social_welfare_officer', 'district_planning_officer', 'district_career_officer',
+                  'district_statistical_officer', 'district_accounts_officer', 'provincial_education_officer',
+                  'provincial_standards_officer', 'provincial_social_welfare', 'provincial_planning_officer',
+                  'provincial_career_officer', 'provincial_statistical_officer', 'provincial_accounts_officer',
+                  'permanent_secretary', 'director_examinations', 'director_curriculum', 'director_planning',
+                  'director_social_welfare', 'director_finance', 'director_special_education'
+                ]}>
+                  <AppLayout>
+                    <Dashboard />
+                  </AppLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/:schoolSlug/dashboard" element={
                 <ProtectedRoute requiredRoles={[
                   'head_teacher', 'deputy_head', 'career_guidance_teacher',
                   'social_welfare_teacher', 'school_accountant', 'boarding_teacher',
@@ -213,7 +246,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/students" element={
+              <Route path="/:schoolSlug/students" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Students />
@@ -221,7 +254,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/students/add" element={
+              <Route path="/:schoolSlug/students/add" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <AddStudent />
@@ -229,7 +262,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/students/:id" element={
+              <Route path="/:schoolSlug/students/:id" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <StudentDetails />
@@ -237,7 +270,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/students/:id/edit" element={
+              <Route path="/:schoolSlug/students/:id/edit" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <AddStudent /> {/* Reusing AddStudent for Edit */}
@@ -245,7 +278,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/academic-records" element={
+              <Route path="/:schoolSlug/academic-records" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <AcademicRecords />
@@ -253,7 +286,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/reports" element={
+              <Route path="/:schoolSlug/reports" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Reports />
@@ -261,7 +294,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/statistics" element={
+              <Route path="/:schoolSlug/statistics" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Statistics />
@@ -285,7 +318,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/planning" element={
+              <Route path="/:schoolSlug/planning" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Planning />
@@ -293,7 +326,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/settings" element={
+              <Route path="/:schoolSlug/settings" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Settings />
@@ -301,7 +334,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/teachers" element={
+              <Route path="/:schoolSlug/teachers" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Teachers />
@@ -309,7 +342,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/teachers/add" element={
+              <Route path="/:schoolSlug/teachers/add" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <AddTeacher />
@@ -317,7 +350,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/teachers/:id" element={
+              <Route path="/:schoolSlug/teachers/:id" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <TeacherDetails />
@@ -325,7 +358,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/teachers/:id/edit" element={
+              <Route path="/:schoolSlug/teachers/:id/edit" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <AddTeacher />
@@ -333,7 +366,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/classes" element={
+              <Route path="/:schoolSlug/classes" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Classes />
@@ -341,7 +374,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/classes/:id/register" element={
+              <Route path="/:schoolSlug/classes/:id/register" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <ClassRegister />
@@ -382,6 +415,22 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
+              <Route path="/:schoolSlug/subjects" element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <Subjects />
+                  </AppLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/:schoolSlug/results-entry" element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ResultsEntry />
+                  </AppLayout>
+                </ProtectedRoute>
+              } />
+
               <Route path="/examinations" element={
                 <ProtectedRoute>
                   <AppLayout>
@@ -407,7 +456,7 @@ const App = () => {
               } />
 
               {/* Attendance & Time table */}
-              <Route path="/attendance" element={
+              <Route path="/:schoolSlug/attendance" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Attendance />
@@ -415,7 +464,7 @@ const App = () => {
                 </ProtectedRoute>
               } />
 
-              <Route path="/timetable" element={
+              <Route path="/:schoolSlug/timetable" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Timetable />
@@ -424,7 +473,7 @@ const App = () => {
               } />
 
               {/* Fi nance */}
-              <Route path="/finance" element={
+              <Route path="/:schoolSlug/finance" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Finance />
@@ -433,7 +482,7 @@ const App = () => {
               } />
 
               {/* Parent P ortal */}
-              <Route path="/parent-portal" element={
+              <Route path="/:schoolSlug/parent-portal" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <ParentPortal />
@@ -442,7 +491,7 @@ const App = () => {
               } />
 
               {/* Mess aging */}
-              <Route path="/messaging" element={
+              <Route path="/:schoolSlug/messaging" element={
                 <ProtectedRoute>
                   <AppLayout>
                     <Messaging />
