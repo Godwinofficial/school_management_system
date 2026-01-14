@@ -79,7 +79,7 @@ export default function Dashboard() {
         const students = studentsRes.data || [];
         const classes = classesRes.data || [];
         const teachers = (profilesRes.data || []).filter(p =>
-          p.role && ['head_teacher', 'deputy_head', 'senior_teacher', 'class_teacher'].includes(p.role)
+          p.role && ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher'].includes(p.role)
         );
 
         // Calculate grade distribution
@@ -125,7 +125,7 @@ export default function Dashboard() {
 
         const students = studentsRes.data || [];
         const teachers = (profilesRes.data || []).filter(p =>
-          p.role && ['head_teacher', 'deputy_head', 'senior_teacher', 'class_teacher'].includes(p.role)
+          p.role && ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher'].includes(p.role)
         );
 
         setStats({
@@ -195,7 +195,7 @@ export default function Dashboard() {
       </div>
 
       {/* School Portal Access Link - Only for Staff */}
-      {user.school && ['head_teacher', 'deputy_head', 'senior_teacher', 'class_teacher'].includes(user.role) && (
+      {user.school && ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher'].includes(user.role) && (
         <Card className="border-primary/20 bg-primary/5 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">

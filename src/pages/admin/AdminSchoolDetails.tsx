@@ -217,7 +217,7 @@ export default function AdminSchoolDetails() {
         firstName: '',
         lastName: '',
         email: '',
-        role: 'class_teacher'
+        role: 'subject_teacher'
     });
 
     const handleOpenPermissions = (user: User) => {
@@ -308,7 +308,7 @@ export default function AdminSchoolDetails() {
             toast({ title: "User Created", description: `Account created. Default password is '123456'.` });
         }
         setIsAddUserOpen(false);
-        setUserForm({ firstName: '', lastName: '', email: '', role: 'class_teacher' }); // Reset
+        setUserForm({ firstName: '', lastName: '', email: '', role: 'subject_teacher' }); // Reset
     };
 
 
@@ -808,7 +808,7 @@ export default function AdminSchoolDetails() {
                                 <option value="head_teacher">Head Teacher</option>
                                 <option value="deputy_head">Deputy Head</option>
                                 <option value="senior_teacher">Senior Teacher</option>
-                                <option value="class_teacher">Class Teacher</option>
+                                <option value="subject_teacher">Subject Teacher</option>
                                 <option value="school_accountant">School Accountant</option>
                             </select>
                         </div>

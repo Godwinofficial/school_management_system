@@ -27,7 +27,7 @@ export interface Teacher {
   email: string;
   qualification: string;
   subjects: string[];
-  assignedClassIds?: string[]; // Classes where this teacher teaches (as class teacher or subject teacher)
+  assignedClassIds?: string[]; // Classes where this teacher teaches (as subject teacher)
   position: 'Head Teacher' | 'Deputy Head' | 'Senior Teacher' | 'Teacher' | 'Career Guidance' | 'Social Welfare' | 'Accountant' | 'Boarding Teacher';
   dateEmployed: string;
   status: 'Active' | 'On Leave' | 'Transferred' | 'Resigned';
@@ -40,7 +40,7 @@ export interface Class {
   level: number; // 1-12
   stream: string; // A, B, C, etc.
   capacity: number;
-  teacherId?: string; // Class teacher
+  teacherId?: string; // Subject teacher
   subjects: {
     subjectId: string;
     subjectName: string;

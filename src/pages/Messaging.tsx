@@ -116,7 +116,7 @@ export default function Messaging() {
             const schoolId = user!.school!.id;
             const audience = user!.role === 'student' ? 'students' :
                 user!.role === 'parent' ? 'parents' :
-                    ['head_teacher', 'deputy_head', 'senior_teacher', 'class_teacher'].includes(user!.role) ? 'teachers' : 'all';
+                    ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher'].includes(user!.role) ? 'teachers' : 'all';
 
             const [annData, msgData, recData] = await Promise.all([
                 CommunicationService.getAnnouncements(schoolId, audience),

@@ -350,7 +350,7 @@ export default function Classes() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Class Teacher</Label>
+                    <Label>Subject Teacher</Label>
                     <Link to={`/${schoolSlug}/teachers/add`} className="text-xs text-primary hover:underline flex items-center">
                       <Plus className="h-3 w-3 mr-1" /> Add New
                     </Link>
@@ -389,7 +389,7 @@ export default function Classes() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Class Teacher</Label>
+                    <Label>Subject Teacher</Label>
                     <Link to={`/${schoolSlug}/teachers/add`} className="text-xs text-primary hover:underline flex items-center">
                       <Plus className="h-3 w-3 mr-1" /> Add New
                     </Link>

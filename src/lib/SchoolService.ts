@@ -382,7 +382,7 @@ export class SchoolService {
             .from('profiles')
             .select('id, first_name, last_name, role')
             .eq('school_id', schoolId)
-            .in('role', ['head_teacher', 'deputy_head', 'senior_teacher', 'class_teacher']);
+            .in('role', ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher']);
 
         if (error) {
             console.error('Error fetching teachers:', error);

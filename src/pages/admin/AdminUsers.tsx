@@ -25,7 +25,7 @@ export default function AdminUsers() {
         firstName: '',
         lastName: '',
         email: '',
-        role: 'class_teacher' as UserRole,
+        role: 'subject_teacher' as UserRole,
         schoolId: ''
     });
 
@@ -143,7 +143,7 @@ export default function AdminUsers() {
             // 4. Update UI
             setUsers(prev => [...prev, newUser]);
             setIsAddUserOpen(false);
-            setFormData({ firstName: '', lastName: '', email: '', role: 'class_teacher', schoolId: '' }); // Reset
+            setFormData({ firstName: '', lastName: '', email: '', role: 'subject_teacher', schoolId: '' }); // Reset
 
         } catch (error) {
             console.error(error);
@@ -298,7 +298,7 @@ export default function AdminUsers() {
                                     <SelectItem value="head_teacher">Head Teacher</SelectItem>
                                     <SelectItem value="deputy_head">Deputy Head</SelectItem>
                                     <SelectItem value="senior_teacher">Senior Teacher</SelectItem>
-                                    <SelectItem value="class_teacher">Class Teacher</SelectItem>
+                                    <SelectItem value="subject_teacher">Subject Teacher</SelectItem>
                                     <SelectItem value="school_accountant">School Accountant</SelectItem>
                                     <SelectItem value="super_admin">Super Admin</SelectItem>
                                 </SelectContent>

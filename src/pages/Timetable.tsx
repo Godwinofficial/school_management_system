@@ -73,7 +73,7 @@ export default function Timetable() {
 
             // Fetch timetable entries based on role
             let filters: any = {};
-            if (user?.role === 'class_teacher') {
+            if (user?.role === 'subject_teacher') {
                 filters = { teacherId: user.id };
             } else if (user?.role === 'student' && user.classId) {
                 filters = { classId: user.classId };
@@ -193,7 +193,7 @@ export default function Timetable() {
                     </h1>
                     <p className="text-muted-foreground">
                         {canManage ? 'Manage school-wide recurring timetable' :
-                            user?.role === 'class_teacher' ? 'Your assigned class schedule' :
+                            user?.role === 'subject_teacher' ? 'Your assigned class schedule' :
                                 'Your weekly class schedule'}
                     </p>
                 </div>

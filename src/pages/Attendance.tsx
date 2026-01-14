@@ -58,7 +58,7 @@ export default function Attendance() {
                     teacher.assignedClassIds?.includes(cls.id) || cls.teacherId === teacher.id
                 );
             } else {
-                // If no assigned classes, show classes where they are the class teacher
+                // If no assigned classes, show classes where they are the subject teacher
                 loadedClasses = loadedClasses.filter(cls => cls.teacherId === teacher?.id);
             }
         } else {

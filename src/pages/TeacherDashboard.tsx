@@ -126,8 +126,8 @@ export default function TeacherDashboard() {
 
   const getWelcomeMessage = () => {
     if (!user) return 'Welcome!';
-    const timeOfDay = new Date().getHours() < 12 ? 'Morning' : 
-                     new Date().getHours() < 18 ? 'Afternoon' : 'Evening';
+    const timeOfDay = new Date().getHours() < 12 ? 'Morning' :
+      new Date().getHours() < 18 ? 'Afternoon' : 'Evening';
     return `Good ${timeOfDay}, ${user.firstName || 'Teacher'}!`;
   };
 
@@ -163,7 +163,7 @@ export default function TeacherDashboard() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="text-xs">
-            {teacherData.assignedClass || 'Class Teacher'}
+            {teacherData.assignedClass || 'Subject Teacher'}
           </Badge>
           <Badge variant="outline" className="text-xs">
             {teacherData.subjects?.join(', ') || 'No subjects'}

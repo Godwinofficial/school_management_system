@@ -31,7 +31,7 @@ export type UserRole =
   | 'senior_teacher'
   | 'career_guidance_teacher'
   | 'social_welfare_teacher'
-  | 'class_teacher'
+  | 'subject_teacher'
   | 'house_tutor'
   | 'school_accountant'
   | 'boarding_teacher'
@@ -103,8 +103,8 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermission[]> = {
     'view_reports'
   ],
 
-  // Class Teacher - Student & Assessment Focus
-  class_teacher: [
+  // Subject Teacher - Student & Assessment Focus
+  subject_teacher: [
     'manage_students', // Implicitly their own students usually
     'manage_assessments',
     'view_reports'
@@ -187,8 +187,8 @@ export class AuthService {
         email: 'teacher@school.zm',
         firstName: 'Sarah',
         lastName: 'Kabwe',
-        role: 'class_teacher',
-        permissions: DEFAULT_PERMISSIONS.class_teacher,
+        role: 'subject_teacher',
+        permissions: DEFAULT_PERMISSIONS.subject_teacher,
         school: {
           id: 'school_1',
           name: 'Lusaka Primary School',
@@ -543,7 +543,7 @@ export class AuthService {
     const user = this.getCurrentUser();
     if (!user) return 'school';
 
-    const schoolRoles = ['head_teacher', 'deputy_head', 'senior_teacher', 'career_guidance_teacher', 'social_welfare_teacher', 'class_teacher', 'house_tutor', 'school_accountant', 'boarding_teacher'];
+    const schoolRoles = ['head_teacher', 'deputy_head', 'senior_teacher', 'career_guidance_teacher', 'social_welfare_teacher', 'subject_teacher', 'house_tutor', 'school_accountant', 'boarding_teacher'];
     const districtRoles = ['district_education_director', 'district_standards_officer', 'district_education_officer', 'district_social_welfare_officer', 'district_planning_officer', 'district_career_officer', 'district_statistical_officer', 'district_accounts_officer'];
     const provincialRoles = ['provincial_education_officer', 'provincial_standards_officer', 'provincial_social_welfare', 'provincial_planning_officer', 'provincial_career_officer', 'provincial_statistical_officer', 'provincial_accounts_officer'];
     const nationalRoles = ['permanent_secretary', 'director_examinations', 'director_curriculum', 'director_planning', 'director_social_welfare', 'director_finance', 'director_special_education'];

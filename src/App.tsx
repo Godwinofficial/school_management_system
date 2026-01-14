@@ -180,7 +180,7 @@ const App = () => {
                     if (user?.role === 'student') {
                       return <Navigate to={`/${schoolSlug || 'national'}/student`} />;
                     }
-                    if (user?.role === 'class_teacher') {
+                    if (user?.role === 'subject_teacher') {
                       return <Navigate to={`/${schoolSlug}/teacher-dashboard`} />;
                     }
                     if (AuthService.getUserLevel() === 'school' && user?.school) {
@@ -204,7 +204,7 @@ const App = () => {
 
               {/* Teacher Dash board */}
               <Route path="/:schoolSlug/teacher-dashboard" element={
-                <ProtectedRoute requiredRoles="class_teacher">
+                <ProtectedRoute requiredRoles="subject_teacher">
                   <AppLayout>
                     <TeacherDashboard />
                   </AppLayout>

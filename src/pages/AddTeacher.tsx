@@ -22,7 +22,7 @@ export default function AddTeacher() {
     const { toast } = useToast();
 
     const canAssignClasses = user?.role === 'head_teacher' || user?.role === 'super_admin';
-    const canManageSubjects = user?.role === 'class_teacher' || user?.role === 'super_admin';
+    const canManageSubjects = user?.role === 'subject_teacher' || user?.role === 'super_admin';
 
     const [isLoading, setIsLoading] = useState(!!id);
     const [classes, setClasses] = useState<Class[]>([]);
@@ -235,14 +235,14 @@ export default function AddTeacher() {
                 'Head Teacher': 'head_teacher',
                 'Deputy Head': 'deputy_head',
                 'Senior Teacher': 'senior_teacher',
-                'Teacher': 'class_teacher',
+                'Teacher': 'subject_teacher',
                 'Career Guidance': 'career_guidance_teacher',
                 'Social Welfare': 'social_welfare_teacher',
                 'Accountant': 'school_accountant',
                 'Boarding Teacher': 'boarding_teacher'
             };
 
-            const role = positionToRoleMap[formData.position] || 'class_teacher';
+            const role = positionToRoleMap[formData.position] || 'subject_teacher';
 
             const profilePayload = {
                 id: teacherData.id, // Keep IDs synced
@@ -541,7 +541,7 @@ export default function AddTeacher() {
                                         const key = String(c.level || 'Unknown');
                                         (acc[key] = acc[key] || []).push(c);
                                         return acc;
-                                    }, {})).sort((a,b)=>Number(a[0]) - Number(b[0])).map(([level, clsGroup]) => {
+                                    }, {})).sort((a, b) => Number(a[0]) - Number(b[0])).map(([level, clsGroup]) => {
                                         const allIds = clsGroup.map(c => c.id);
                                         const allSelected = allIds.every(id => formData.assignedClassIds.includes(id));
 

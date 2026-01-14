@@ -107,7 +107,7 @@ export default function Students() {
                         student.classId && teacher.assignedClassIds?.includes(student.classId)
                     );
                 } else {
-                    // Show students where teacher is the class teacher
+                    // Show students where teacher is the subject teacher
                     const teacherClasses = StorageService.getClasses(user?.school?.id)
                         .filter(cls => cls.teacherId === teacher?.id)
                         .map(cls => cls.id);
