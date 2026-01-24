@@ -13,6 +13,7 @@ export default function TeacherDetails() {
     const { schoolSlug, id } = useParams<{ schoolSlug: string, id: string }>();
     const navigate = useNavigate();
     const [teacher, setTeacher] = useState<Teacher | null>(null);
+    const [assignedClasses, setAssignedClasses] = useState<any[]>([]);
 
     useEffect(() => {
         const fetchTeacher = async () => {
@@ -45,6 +46,18 @@ export default function TeacherDetails() {
                         status: data.status
                     };
                     setTeacher(teacherData);
+
+                    // Fetch class details if any
+                    if (data.assigned_class_ids && data.assigned_class_ids.length > 0) {
+                        const { data: classData } = await supabase
+                            .from('classes')
+                            .select('id, name, level, stream')
+                            .in('id', data.assigned_class_ids);
+
+                        if (classData) {
+                            setAssignedClasses(classData);
+                        }
+                    }
                 } else {
                     navigate(`/${schoolSlug}/teachers`);
                 }
@@ -52,6 +65,7 @@ export default function TeacherDetails() {
         };
         fetchTeacher();
     }, [id, navigate, schoolSlug]);
+
 
     if (!teacher) return null;
 
@@ -162,7 +176,7 @@ export default function TeacherDetails() {
                     </div>
                 </TabsContent>
 
-                <TabsContent value="classes">
+                <TabsContent value="classes" className="space-y-4">
                     <Card>
                         <CardHeader>
                             <CardTitle>Assigned Subjects</CardTitle>
@@ -170,11 +184,40 @@ export default function TeacherDetails() {
                         </CardHeader>
                         <CardContent>
                             <div className="flex flex-wrap gap-2">
-                                {teacher.subjects.map((subject, index) => (
-                                    <Badge key={index} variant="secondary" className="text-sm py-1 px-3">
-                                        {subject}
-                                    </Badge>
-                                ))}
+                                {teacher.subjects.length > 0 ? (
+                                    teacher.subjects.map((subject, index) => (
+                                        <Badge key={index} variant="secondary" className="text-sm py-1 px-3">
+                                            {subject}
+                                        </Badge>
+                                    ))
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">No subjects assigned.</p>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Assigned Classes</CardTitle>
+                            <CardDescription>Classes this teacher is responsible for</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {assignedClasses.length > 0 ? (
+                                    assignedClasses.map((cls) => (
+                                        <div key={cls.id} className="flex items-center p-3 border rounded-lg bg-card shadow-sm">
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-medium leading-none">{cls.name}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Grade {cls.level} {cls.stream ? `- ${cls.stream}` : ''}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-sm text-muted-foreground col-span-2">No classes assigned.</p>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

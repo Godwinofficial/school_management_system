@@ -256,11 +256,21 @@ export default function Classes() {
   };
 
   const getUnassignedStudents = () => {
-    return students.filter(s => !s.class_id && s.status === 'active');
+    return students.filter(s => !s.class_id && (s.status === 'active' || s.status === 'Active'));
   };
 
   const getInitials = (name: string) => {
     return name.substring(0, 2).toUpperCase();
+  };
+
+  const getClassName = (classId?: string) => {
+    if (!classId) return "";
+    const cls = classes.find(c => c.id === classId);
+    return cls ? cls.name : "";
+  };
+
+  const getAssignableStudents = () => {
+    return students.filter(s => s.status === 'active' || s.status === 'Active');
   };
 
   return (
@@ -276,96 +286,105 @@ export default function Classes() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="shadow-sm">
-                <UserPlus className="h-4 w-4 mr-2" />
-                Assign Student
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Assign Student to Class</DialogTitle>
-                <DialogDescription>
-                  Select a student and assign them to a class
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Select value={selectedStudent} onValueChange={setSelectedStudent}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select student" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getUnassignedStudents().map((student) => (
-                      <SelectItem key={student.id} value={student.id}>
-                        {student.first_name} {student.surname} - Grade {student.current_grade}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={selectedClass} onValueChange={setSelectedClass}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name} (Level {cls.level})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={handleAssignStudent} className="w-full">
+          {AuthService.hasPermission('manage_classes') && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="shadow-sm">
+                  <UserPlus className="h-4 w-4 mr-2" />
                   Assign Student
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-primary hover:bg-primary/90 shadow-sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Class
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Class</DialogTitle>
-                <DialogDescription>Add a new dynamic grade or stream to your school.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Class Name (e.g. Grade 1A)</Label>
-                  <Input value={classForm.name} onChange={e => setClassForm({ ...classForm, name: e.target.value })} placeholder="Enter name" />
-                </div>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-2">
-                    <Label>Grade Level</Label>
-                    <Input type="number" value={classForm.level} onChange={e => setClassForm({ ...classForm, level: parseInt(e.target.value) })} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Max Capacity</Label>
-                  <Input type="number" value={classForm.capacity} onChange={e => setClassForm({ ...classForm, capacity: parseInt(e.target.value) })} />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Subject Teacher</Label>
-                    <Link to={`/${schoolSlug}/teachers/add`} className="text-xs text-primary hover:underline flex items-center">
-                      <Plus className="h-3 w-3 mr-1" /> Add New
-                    </Link>
-                  </div>
-                  <Select value={classForm.teacher_id} onValueChange={v => setClassForm({ ...classForm, teacher_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Assign Student to Class</DialogTitle>
+                  <DialogDescription>
+                    Select a student and assign them to a class
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select student" />
+                    </SelectTrigger>
                     <SelectContent>
-                      {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+                      {getAssignableStudents().map((student) => {
+                        const currentClass = getClassName(student.class_id);
+                        return (
+                          <SelectItem key={student.id} value={student.id}>
+                            {student.first_name} {student.surname} - Grade {student.current_grade}
+                            {currentClass && ` (Current: ${currentClass})`}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
+                  <Select value={selectedClass} onValueChange={setSelectedClass}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classes.map((cls) => (
+                        <SelectItem key={cls.id} value={cls.id}>
+                          {cls.name} (Level {cls.level})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={handleAssignStudent} className="w-full">
+                    Assign Student
+                  </Button>
                 </div>
-              </div>
-              <Button onClick={handleCreateClass} className="w-full">Create Class</Button>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {AuthService.hasPermission('manage_classes') && (
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary hover:bg-primary/90 shadow-sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Class
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Class</DialogTitle>
+                  <DialogDescription>Add a new dynamic grade or stream to your school.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Class Name (e.g. Grade 1A)</Label>
+                    <Input value={classForm.name} onChange={e => setClassForm({ ...classForm, name: e.target.value })} placeholder="Enter name" />
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-2">
+                      <Label>Grade Level</Label>
+                      <Input type="number" value={classForm.level} onChange={e => setClassForm({ ...classForm, level: parseInt(e.target.value) })} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max Capacity</Label>
+                    <Input type="number" value={classForm.capacity} onChange={e => setClassForm({ ...classForm, capacity: parseInt(e.target.value) })} />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Subject Teacher</Label>
+                      <Link to={`/${schoolSlug}/teachers/add`} className="text-xs text-primary hover:underline flex items-center">
+                        <Plus className="h-3 w-3 mr-1" /> Add New
+                      </Link>
+                    </div>
+                    <Select value={classForm.teacher_id} onValueChange={v => setClassForm({ ...classForm, teacher_id: v })}>
+                      <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
+                      <SelectContent>
+                        {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button onClick={handleCreateClass} className="w-full">Create Class</Button>
+              </DialogContent>
+            </Dialog>
+          )}
 
           <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
             <DialogContent>
@@ -642,40 +661,46 @@ export default function Classes() {
                                       <BookOpen className="mr-2 h-4 w-4" /> View Details
                                     </Link>
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => openEditDialog(cls)} className="flex items-center cursor-pointer">
-                                    <Edit2 className="mr-2 h-4 w-4" /> Edit Class
-                                  </DropdownMenuItem>
+                                  {AuthService.hasPermission('manage_classes') && (
+                                    <DropdownMenuItem onSelect={() => openEditDialog(cls)} className="flex items-center cursor-pointer">
+                                      <Edit2 className="mr-2 h-4 w-4" /> Edit Class
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem asChild>
                                     <Link to={`/${schoolSlug}/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
                                       <Printer className="mr-2 h-4 w-4" /> Print Register
                                     </Link>
                                   </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
-                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                      </DropdownMenuItem>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Delete Class</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          Are you sure you want to delete {cls.name}?
-                                          This will unassign all students from this class.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction
-                                          onClick={() => handleDeleteClass(cls.id)}
-                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                        >
-                                          Delete
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
+                                  {AuthService.hasPermission('manage_classes') && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                          </DropdownMenuItem>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Delete Class</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              Are you sure you want to delete {cls.name}?
+                                              This will unassign all students from this class.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction
+                                              onClick={() => handleDeleteClass(cls.id)}
+                                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                            >
+                                              Delete
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    </>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </TableCell>
@@ -721,40 +746,46 @@ export default function Classes() {
                                     <BookOpen className="mr-2 h-4 w-4" /> View Details
                                   </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => openEditDialog(cls)} className="flex items-center cursor-pointer">
-                                  <Edit2 className="mr-2 h-4 w-4" /> Edit Class
-                                </DropdownMenuItem>
+                                {AuthService.hasPermission('manage_classes') && (
+                                  <DropdownMenuItem onSelect={() => openEditDialog(cls)} className="flex items-center cursor-pointer">
+                                    <Edit2 className="mr-2 h-4 w-4" /> Edit Class
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem asChild>
                                   <Link to={`/${schoolSlug}/classes/${cls.id}/register`} className="flex items-center cursor-pointer">
                                     <Printer className="mr-2 h-4 w-4" /> Print Register
                                   </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
-                                      <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                    </DropdownMenuItem>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete Class</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Are you sure you want to delete {cls.name}?
-                                        This will unassign all students from this class.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => handleDeleteClass(cls.id)}
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                {AuthService.hasPermission('manage_classes') && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                        </DropdownMenuItem>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete Class</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Are you sure you want to delete {cls.name}?
+                                            This will unassign all students from this class.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => handleDeleteClass(cls.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          >
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>

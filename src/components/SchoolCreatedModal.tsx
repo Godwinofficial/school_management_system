@@ -22,7 +22,11 @@ Head Teacher:
 Email: ${school.contact.email}
 Password: password123
 
-Senior Teacher:
+Deputy Head Teacher:
+Email: deputy.${school.contact.email}
+Password: password123
+
+HOD/Senior Teacher:
 Email: senior.${school.contact.email}
 Password: password123
         `.trim();
@@ -63,7 +67,21 @@ Password: password123
                     </div>
 
                     <div className="pt-2 border-t">
-                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Senior Teacher Credentials</h4>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Deputy Head Teacher Credentials</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground">Email</label>
+                                <div className="font-mono text-sm bg-background p-2 rounded border">deputy.{school.contact.email}</div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground">Password</label>
+                                <div className="font-mono text-sm bg-background p-2 rounded border">password123</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-2 border-t">
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2">HOD/Senior Teacher Credentials</h4>
                         <div className="grid grid-cols-1 gap-2">
                             <div className="space-y-1">
                                 <label className="text-xs font-medium text-muted-foreground">Email</label>

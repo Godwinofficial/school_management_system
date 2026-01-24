@@ -21,8 +21,8 @@ export default function AddTeacher() {
     const userLevel = AuthService.getUserLevel();
     const { toast } = useToast();
 
-    const canAssignClasses = user?.role === 'head_teacher' || user?.role === 'super_admin';
-    const canManageSubjects = user?.role === 'subject_teacher' || user?.role === 'super_admin';
+    const canAssignClasses = AuthService.hasPermission('manage_classes');
+    const canManageSubjects = AuthService.hasPermission('manage_subjects');
 
     const [isLoading, setIsLoading] = useState(!!id);
     const [classes, setClasses] = useState<Class[]>([]);
@@ -217,6 +217,8 @@ export default function AddTeacher() {
             if (id) {
                 dbPayload.id = id;
             }
+
+
 
             // 1. Create/Update Teacher Record
             const { data: teacherData, error: teacherError } = await supabase

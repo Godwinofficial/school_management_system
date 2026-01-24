@@ -118,11 +118,26 @@ export default function Messaging() {
                 user!.role === 'parent' ? 'parents' :
                     ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher'].includes(user!.role) ? 'teachers' : 'all';
 
-            const [annData, msgData, recData] = await Promise.all([
+            const promises: Promise<any>[] = [
                 CommunicationService.getAnnouncements(schoolId, audience),
                 CommunicationService.getMessages(schoolId, user!.id),
                 SchoolService.getTeachers(schoolId)
-            ]);
+            ];
+
+            // If user is staff, also fetch students to message them
+            const isStaff = ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher', 'teacher'].includes(user!.role);
+            if (isStaff) {
+                promises.push(SchoolService.getStudents(schoolId));
+            }
+
+            const results = await Promise.all(promises);
+            const annData = results[0];
+            const msgData = results[1];
+            let recData = results[2];
+
+            if (isStaff && results[3]) {
+                recData = [...recData, ...results[3]];
+            }
 
             // Check for new messages/announcements for notifications
             if (!showLoading) {
@@ -399,7 +414,10 @@ export default function Messaging() {
                                     <Button className="w-full shadow-md"><Send className="h-4 w-4 mr-2" />New Chat</Button>
                                 </DialogTrigger>
                                 <DialogContent>
-                                    <DialogHeader><DialogTitle>Start Conversation</DialogTitle></DialogHeader>
+                                    <DialogHeader>
+                                        <DialogTitle>Start Conversation</DialogTitle>
+                                        <DialogDescription>Select a contact to start chatting with.</DialogDescription>
+                                    </DialogHeader>
                                     <div className="space-y-4 py-4">
                                         <div className="space-y-2">
                                             <Label>Select Contact</Label>

@@ -15,6 +15,22 @@ export interface ValidationResult {
     totalRows: number;
 }
 
+export interface Teacher {
+    id?: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    role: string;
+    tsNumber?: string;
+    nrc?: string;
+    dateOfBirth?: string;
+    gender: 'M' | 'F';
+    address?: string;
+    qualifications?: string;
+    joinedDate?: string;
+}
+
 export interface Student {
     id?: string;
     studentId?: string;
@@ -133,7 +149,7 @@ export class ExcelService {
                         }
 
                         // Validate email format if provided
-                        if (row['Guardian Email'] && !this.isValidEmail(row['Guardian Email'])) {
+                        if (row['Guardian Email'] && !isValidEmail(row['Guardian Email'])) {
                             errors.push({ row: rowNumber, field: 'Guardian Email', message: 'Invalid email format', value: row['Guardian Email'] });
                         }
 
@@ -144,8 +160,8 @@ export class ExcelService {
                                 studentId: row['Student ID'] || undefined,
                                 firstName: row['First Name'],
                                 lastName: row['Last Name'],
-                                dateOfBirth: this.parseDate(row['Date of Birth']),
-                                gender: this.normalizeGender(row['Gender']),
+                                dateOfBirth: parseDate(row['Date of Birth']),
+                                gender: normalizeGender(row['Gender']),
                                 gradeLevel: parseInt(row['Grade'] || row['Grade Level']),
                                 stream: row['Stream'] || undefined,
                                 guardianName: row['Guardian Name'] || undefined,
@@ -153,7 +169,7 @@ export class ExcelService {
                                 guardianEmail: row['Guardian Email'] || undefined,
                                 address: row['Address'] || undefined,
                                 medicalInfo: row['Medical Info'] || undefined,
-                                enrollmentDate: row['Enrollment Date'] ? this.parseDate(row['Enrollment Date']) : new Date().toISOString().split('T')[0]
+                                enrollmentDate: row['Enrollment Date'] ? parseDate(row['Enrollment Date']) : new Date().toISOString().split('T')[0]
                             });
                         }
                     });
@@ -455,50 +471,154 @@ export class ExcelService {
         saveAs(blob, 'grading_system_template.xlsx');
     }
 
-    // ==================== HELPER METHODS ====================
+    // ==================== TEACHER OPERATIONS ====================
 
-    private static isValidEmail(email: string): boolean {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
+    static async importTeachersFromExcel(file: File): Promise<{ data: Teacher[], validation: ValidationResult }> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    const teachers: Teacher[] = [];
+                    const errors: ValidationError[] = [];
+
+                    jsonData.forEach((row: any, index: number) => {
+                        const rowNumber = index + 2;
+
+                        // Validate required fields
+                        if (!row['First Name']) errors.push({ row: rowNumber, field: 'First Name', message: 'Required' });
+                        if (!row['Last Name']) errors.push({ row: rowNumber, field: 'Last Name', message: 'Required' });
+                        if (!row['Email']) errors.push({ row: rowNumber, field: 'Email', message: 'Required' });
+                        if (!row['Role']) errors.push({ row: rowNumber, field: 'Role', message: 'Required' });
+
+                        // Validate email format
+                        if (row['Email'] && !isValidEmail(row['Email'])) {
+                            errors.push({ row: rowNumber, field: 'Email', message: 'Invalid email format', value: row['Email'] });
+                        }
+
+                        // Validate Role
+                        const validRoles = ['head_teacher', 'deputy_head', 'senior_teacher', 'subject_teacher', 'teacher'];
+                        if (row['Role'] && !validRoles.includes(row['Role'].toLowerCase())) {
+                            errors.push({ row: rowNumber, field: 'Role', message: 'Invalid role. Use subject_teacher, senior_teacher, etc.', value: row['Role'] });
+                        }
+
+                        const hasRequired = row['First Name'] && row['Last Name'] && row['Email'] && row['Role'];
+
+                        if (hasRequired) {
+                            teachers.push({
+                                firstName: row['First Name'],
+                                lastName: row['Last Name'],
+                                email: row['Email'],
+                                phone: row['Phone'],
+                                role: row['Role'].toLowerCase(),
+                                tsNumber: row['TS Number'],
+                                nrc: row['NRC'],
+                                dateOfBirth: parseDate(row['Date of Birth']),
+                                gender: normalizeGender(row['Gender']),
+                                address: row['Address'],
+                                qualifications: row['Qualifications'],
+                                joinedDate: row['Joined Date'] ? parseDate(row['Joined Date']) : new Date().toISOString().split('T')[0]
+                            });
+                        }
+                    });
+
+                    const validation: ValidationResult = {
+                        valid: errors.length === 0,
+                        errors,
+                        validRows: teachers.length,
+                        totalRows: jsonData.length
+                    };
+
+                    resolve({ data: teachers, validation });
+                } catch (error) {
+                    reject(new Error(`Failed to parse Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`));
+                }
+            };
+
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsArrayBuffer(file);
+        });
     }
 
-    private static normalizeGender(gender: string): 'M' | 'F' {
-        const normalized = gender.toString().toUpperCase();
-        if (normalized === 'MALE' || normalized === 'M') return 'M';
-        if (normalized === 'FEMALE' || normalized === 'F') return 'F';
-        return 'M'; // Default fallback
-    }
-
-    private static parseDate(dateValue: any): string {
-        if (!dateValue) return '';
-
-        // If it's already in YYYY-MM-DD format
-        if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-            return dateValue;
-        }
-
-        // If it's a DD/MM/YYYY format
-        if (typeof dateValue === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateValue)) {
-            const [day, month, year] = dateValue.split('/');
-            return `${year}-${month}-${day}`;
-        }
-
-        // If it's an Excel serial date number
-        if (typeof dateValue === 'number') {
-            const date = XLSX.SSF.parse_date_code(dateValue);
-            return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
-        }
-
-        // Try to parse as Date object
-        try {
-            const date = new Date(dateValue);
-            if (!isNaN(date.getTime())) {
-                return date.toISOString().split('T')[0];
+    static downloadTeacherTemplate(): void {
+        const template = [
+            {
+                'First Name': 'John',
+                'Last Name': 'Doe',
+                'Email': 'john.doe@school.edu.zm',
+                'Phone': '+260 97 1234567',
+                'Role': 'subject_teacher',
+                'TS Number': '123456',
+                'NRC': '111111/11/1',
+                'Date of Birth': '1985-05-15',
+                'Gender': 'M',
+                'Address': '123 Independence Ave, Lusaka'
             }
-        } catch (e) {
-            // Ignore parsing errors
-        }
+        ];
 
-        return '';
+        const worksheet = XLSX.utils.json_to_sheet(template);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Teachers Template');
+
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, 'teacher_import_template.xlsx');
     }
+
+    // ... rest of class methods
 }
+
+// Helper functions moved outside class to avoid runtime scope issues
+function isValidEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function normalizeGender(gender: string): 'M' | 'F' {
+    if (!gender) return 'M';
+    const normalized = gender.toString().toUpperCase();
+    if (normalized === 'MALE' || normalized === 'M') return 'M';
+    if (normalized === 'FEMALE' || normalized === 'F') return 'F';
+    return 'M'; // Default fallback
+}
+
+function parseDate(dateValue: any): string {
+    if (!dateValue) return '';
+
+    // If it's already in YYYY-MM-DD format
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+        return dateValue;
+    }
+
+    // If it's a DD/MM/YYYY format
+    if (typeof dateValue === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateValue)) {
+        const [day, month, year] = dateValue.split('/');
+        return `${year}-${month}-${day}`;
+    }
+
+    // If it's an Excel serial date number
+    if (typeof dateValue === 'number') {
+        const date = XLSX.SSF.parse_date_code(dateValue);
+        return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+    }
+
+    // Try to parse as Date object
+    try {
+        const date = new Date(dateValue);
+        if (!isNaN(date.getTime())) {
+            return date.toISOString().split('T')[0];
+        }
+    } catch (e) {
+        // Ignore parsing errors
+    }
+
+    return '';
+}
+
+

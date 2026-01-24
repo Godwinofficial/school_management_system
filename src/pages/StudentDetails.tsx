@@ -115,6 +115,15 @@ export default function StudentDetails() {
         || student.mother?.contactNumber
         || 'N/A';
 
+    const guardianEmail = student.guardian?.email
+        || student.father?.email
+        || student.mother?.email
+        || 'N/A';
+
+    const canManageStudents = user?.role === 'head_teacher' ||
+        user?.role === 'deputy_head' ||
+        user?.permissions?.includes('manage_students');
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -127,14 +136,18 @@ export default function StudentDetails() {
                     <p className="text-muted-foreground">View and manage student information</p>
                 </div>
                 <div className="ml-auto flex gap-2">
-                    <Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
-                        <ArrowRightLeft className="h-4 w-4 mr-2" />
-                        Transfer
-                    </Button>
-                    <Button variant="outline" onClick={() => navigate(`/${schoolSlug}/students/${id}/edit`)}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit Profile
-                    </Button>
+                    {canManageStudents && (
+                        <Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
+                            <ArrowRightLeft className="h-4 w-4 mr-2" />
+                            Transfer
+                        </Button>
+                    )}
+                    {canManageStudents && (
+                        <Button variant="outline" onClick={() => navigate(`/${schoolSlug}/students/${id}/edit`)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Profile
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -203,6 +216,10 @@ export default function StudentDetails() {
                                     <div>
                                         <span className="text-muted-foreground block">Contact</span>
                                         <span className="font-medium">{guardianContact}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-muted-foreground block">Email</span>
+                                        <span className="font-medium">{guardianEmail}</span>
                                     </div>
                                 </div>
                             </CardContent>

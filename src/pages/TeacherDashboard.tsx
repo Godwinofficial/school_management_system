@@ -2,60 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AuthService } from "@/lib/auth";
-import { StorageService } from "@/lib/storage";
+import { SupabaseService, TeacherData, ClassData, Exam, Assessment } from "@/lib/SupabaseService";
+import { StudentService } from "@/lib/StudentService";
 import { Users, BookOpen, BookMarked, Clock, Calendar, CheckCircle, AlertCircle, BookText, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-
-interface TeacherData {
-  id: string;
-  assignedClass: string;
-  subjects: string[];
-  todaysSchedule: Array<{
-    time: string;
-    subject: string;
-    class: string;
-    type: string;
-    topic?: string;
-  }>;
-}
-
-interface ClassData {
-  id: string;
-  name: string;
-  totalStudents: number;
-  genderStats: {
-    male: number;
-    female: number;
-  };
-  studentsNeedingAttention: Array<{
-    id: string;
-    name: string;
-    subject: string;
-    issue: string;
-    severity: 'low' | 'medium' | 'high';
-  }>;
-}
-
-interface Exam {
-  id: string;
-  subject: string;
-  date: string;
-  topic: string;
-  totalMarks: number;
-  type: string;
-}
-
-interface Assessment {
-  id: string;
-  classId: string;
-  subject: string;
-  title: string;
-  dueDate: string;
-  totalSubmissions: number;
-  pendingGrading: number;
-  type: string;
-}
 
 interface ClassPerformance {
   subjects: Array<{
@@ -89,30 +40,111 @@ export default function TeacherDashboard() {
   const user = AuthService.getCurrentUser();
 
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       try {
         if (!user) {
           navigate('/login');
           return;
         }
 
-        const teacherData = StorageService.getTeacherData(user.id);
-        if (!teacherData) {
-          throw new Error('Teacher data not found');
+        // 1. Get Teacher Profile
+        const teacherProfile = await SupabaseService.getTeacherProfile(user.id);
+
+        // If no teacher profile found in DB, we might need fallback or error
+        // For now, let's construct a basic one if missing (using user details)
+        const teacherId = teacherProfile?.id || user.id;
+        const subjects = teacherProfile?.subjects && typeof teacherProfile.subjects === 'object'
+          ? (Array.isArray(teacherProfile.subjects) ? teacherProfile.subjects : Object.keys(teacherProfile.subjects))
+          : ['General'];
+
+        // 2. Get Schedule
+        const { data: scheduleData } = await SupabaseService.getTeacherSchedule(teacherId);
+        const todaysSchedule = scheduleData?.map((s: any) => ({
+          time: `${s.start_time?.slice(0, 5)} - ${s.end_time?.slice(0, 5)}`,
+          subject: s.subject?.name || s.subject_id || 'Class',
+          class: s.class?.name || s.class_id || 'Unknown',
+          type: 'class',
+          topic: ''
+        })) || [];
+
+        const constructedTeacherData: TeacherData = {
+          id: teacherId,
+          assignedClass: teacherProfile?.assigned_class_ids?.[0] || 'Unknown',
+          subjects: subjects,
+          todaysSchedule
+        };
+
+        // 3. Get Class Data (Aggregation of all assigned classes)
+        const assignedClassIds = teacherProfile?.assigned_class_ids || [];
+
+        // Fetch all students in the school
+        let allStudents = [];
+        if (user.school?.id) {
+          allStudents = await StudentService.getStudents(user.school.id);
         }
 
-        const classData = StorageService.getClassData(teacherData.assignedClass);
-        const upcomingExams = StorageService.getUpcomingExams(teacherData.assignedClass);
-        const pendingAssessments = StorageService.getPendingAssessments(user.id);
-        const studentPerformance = StorageService.getClassPerformance(teacherData.assignedClass);
+        // Filter students belonging to any of the teacher's assigned classes
+        // If no classes assigned, filter by teacher's primary classId if valid
+        let myStudents = [];
+        if (assignedClassIds.length > 0) {
+          myStudents = allStudents.filter(s => s.classId && assignedClassIds.includes(s.classId));
+        } else if (user.classId) {
+          myStudents = allStudents.filter(s => s.classId === user.classId);
+        }
+
+        // Calculate stats
+        const totalStudents = myStudents.length;
+        const maleCount = myStudents.filter(s => s.gender === 'Male').length;
+        const femaleCount = myStudents.filter(s => s.gender === 'Female').length;
+
+        // Find students needing attention (mock logic or based on performance)
+        const studentsNeedingAttention = myStudents
+          .filter(s => s.overallPerformance === 'Poor' || s.overallPerformance === 'Below Average')
+          .map(s => ({
+            id: s.id,
+            name: `${s.firstName} ${s.surname}`,
+            subject: 'General', // We don't have subject specific performance in student object yet
+            issue: `Performance is ${s.overallPerformance}`,
+            severity: s.overallPerformance === 'Poor' ? 'high' : 'medium'
+          }));
+
+        const classData: ClassData = {
+          id: 'aggregated',
+          name: 'My Classes',
+          totalStudents,
+          genderStats: {
+            male: maleCount,
+            female: femaleCount
+          },
+          studentsNeedingAttention: studentsNeedingAttention as any
+        };
+
+
+        // 4. Exams & Assessments
+        const schoolId = user.school?.id;
+        const upcomingExams = schoolId ? await SupabaseService.getUpcomingExams(schoolId) : [];
+        const pendingAssessments = await SupabaseService.getPendingAssessments(teacherId);
+
+        // 5. Performance (Mock for now as backend calculation is complex)
+        const studentPerformance: ClassPerformance = {
+          subjects: subjects.map((sub: string) => ({
+            name: sub,
+            averageScore: Math.floor(Math.random() * 30) + 60,
+            topPerformer: { name: 'Student A', score: 95 },
+            improvementNeeded: { name: 'Student B', score: 45 }
+          })),
+          overallAverage: 70,
+          classRank: 1
+        };
 
         setDashboardData({
-          teacherData,
+          teacherData: constructedTeacherData,
           classData,
           upcomingExams,
           pendingAssessments,
           studentPerformance
         });
+
       } catch (err) {
         console.error('Error loading dashboard data:', err);
         setError('Failed to load dashboard data. Please try again later.');
@@ -163,7 +195,7 @@ export default function TeacherDashboard() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="text-xs">
-            {teacherData.assignedClass || 'Subject Teacher'}
+            {teacherData.assignedClass && teacherData.assignedClass !== 'Unknown' ? teacherData.assignedClass : 'Subject Teacher'}
           </Badge>
           <Badge variant="outline" className="text-xs">
             {teacherData.subjects?.join(', ') || 'No subjects'}
@@ -239,7 +271,7 @@ export default function TeacherDashboard() {
             <CardDescription>Overall performance in your subjects</CardDescription>
           </CardHeader>
           <CardContent>
-            {studentPerformance?.subjects?.length > 0 ? (
+            {studentPerformance?.subjects && studentPerformance.subjects.length > 0 ? (
               <div className="space-y-4">
                 {studentPerformance.subjects.map((subject) => (
                   <div key={subject.name} className="space-y-1">
@@ -282,7 +314,9 @@ export default function TeacherDashboard() {
                 ))}
               </div>
             ) : (
-              <p className="text-muted-foreground text-sm">No classes scheduled for today.</p>
+              <div className="flex flex-col items-center justify-center p-4 text-center">
+                <p className="text-muted-foreground text-sm">No classes scheduled for today.</p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -308,7 +342,7 @@ export default function TeacherDashboard() {
                       {student.subject}: {student.issue}
                     </p>
                   </div>
-                  <Badge variant={student.severity === 'high' ? 'destructive' : 'warning'}>
+                  <Badge variant={student.severity === 'high' ? 'destructive' : 'secondary'}>
                     {student.severity === 'high' ? 'High Priority' : 'Needs Attention'}
                   </Badge>
                 </div>

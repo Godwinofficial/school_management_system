@@ -9,11 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AuthService } from "@/lib/auth";
 import { TimetableService, TimetableEntry } from "@/lib/TimetableService";
 import { SchoolService } from "@/lib/SchoolService";
-import { Plus, Edit, Trash2, Calendar as CalendarIcon, Repeat, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, Calendar as CalendarIcon, Repeat, Loader2, Check, ChevronsUpDown, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export default function Timetable() {
     const user = AuthService.getCurrentUser();
@@ -28,6 +31,12 @@ export default function Timetable() {
     const [classes, setClasses] = useState<any[]>([]);
     const [teachers, setTeachers] = useState<any[]>([]);
     const [subjects, setSubjects] = useState<any[]>([]);
+
+    // Filtered lists
+    const [filteredSubjects, setFilteredSubjects] = useState<any[]>([]);
+    const [filteredClasses, setFilteredClasses] = useState<any[]>([]);
+
+    const [isTeacherOpen, setIsTeacherOpen] = useState(false);
 
     const [formData, setFormData] = useState({
         subject_id: '',
@@ -54,6 +63,47 @@ export default function Timetable() {
         }
     }, [user?.school?.id]);
 
+    // Filter subjects and classes when teacher selected
+    useEffect(() => {
+        if (!formData.teacher_id) {
+            setFilteredSubjects(subjects);
+            setFilteredClasses(classes);
+        } else {
+            const teacher = teachers.find(t => t.id === formData.teacher_id);
+            if (teacher) {
+                // Filter subjects
+                if (teacher.subjects && teacher.subjects.length > 0) {
+                    const allowedSubjects = subjects.filter(s => teacher.subjects.includes(s.name));
+                    setFilteredSubjects(allowedSubjects);
+
+                    if (formData.subject_id && !allowedSubjects.find(s => s.id === formData.subject_id)) {
+                        setFormData(prev => ({ ...prev, subject_id: '' }));
+                    }
+                } else {
+                    setFilteredSubjects([]);
+                    setFormData(prev => ({ ...prev, subject_id: '' }));
+                }
+
+                // Filter classes
+                if (teacher.assigned_class_ids && teacher.assigned_class_ids.length > 0) {
+                    const allowedClasses = classes.filter(c => teacher.assigned_class_ids.includes(c.id));
+                    setFilteredClasses(allowedClasses);
+
+                    if (formData.class_id && !allowedClasses.find(c => c.id === formData.class_id)) {
+                        setFormData(prev => ({ ...prev, class_id: '' }));
+                    }
+                } else {
+                    setFilteredClasses([]);
+                    setFormData(prev => ({ ...prev, class_id: '' }));
+                }
+
+            } else {
+                setFilteredSubjects(subjects);
+                setFilteredClasses(classes);
+            }
+        }
+    }, [formData.teacher_id, subjects, teachers, classes]);
+
     const loadData = async () => {
         setLoading(true);
         try {
@@ -63,12 +113,14 @@ export default function Timetable() {
             if (canManage) {
                 const [classesList, teachersList, subjectsList] = await Promise.all([
                     SchoolService.getClasses(schoolId),
-                    SchoolService.getTeachers(schoolId),
+                    SchoolService.getTeachersWithSubjects(schoolId), // Use new method
                     SchoolService.getSubjects(schoolId)
                 ]);
                 setClasses(classesList);
                 setTeachers(teachersList);
                 setSubjects(subjectsList);
+                setFilteredSubjects(subjectsList);
+                setFilteredClasses(classesList);
             }
 
             // Fetch timetable entries based on role
@@ -79,10 +131,10 @@ export default function Timetable() {
                 filters = { classId: user.classId };
             }
 
-
             const data = await TimetableService.getTimetable(schoolId, filters);
             setEntries(data);
         } catch (error) {
+            console.error(error);
             toast.error("Failed to load timetable data");
         } finally {
             setLoading(false);
@@ -143,6 +195,7 @@ export default function Timetable() {
             loadData();
             resetForm();
         } catch (error) {
+            console.error(error);
             toast.error("Failed to save entry");
         }
     };
@@ -208,7 +261,7 @@ export default function Timetable() {
                 )}
             </div>
 
-            <Card className="border-border/50 shadow-sm overflow-hidden">
+            <Card className="border-border/50 shadow-sm overflow-hidden timetable-printable-area">
                 <CardHeader className="bg-muted/30 pb-4">
                     <CardTitle className="flex items-center gap-2 text-lg">
                         <CalendarIcon className="h-5 w-5 text-primary" />
@@ -247,54 +300,91 @@ export default function Timetable() {
             </Card>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-md overflow-visible">
                     <DialogHeader>
                         <DialogTitle>{selectedEntry ? 'Edit Session' : 'Add New Session'}</DialogTitle>
                         <DialogDescription>Fill in the details for the recurring weekly session</DialogDescription>
                     </DialogHeader>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
+
+                        <div className="space-y-2 flex flex-col">
+                            <Label>Teacher</Label>
+                            <Popover open={isTeacherOpen} onOpenChange={setIsTeacherOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={isTeacherOpen}
+                                        className="w-full justify-between"
+                                    >
+                                        {formData.teacher_id
+                                            ? teachers.find((t) => t.id === formData.teacher_id)
+                                                ? `${teachers.find((t) => t.id === formData.teacher_id)?.first_name} ${teachers.find((t) => t.id === formData.teacher_id)?.last_name}`
+                                                : "Teacher not found"
+                                            : "Select Teacher..."}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-full p-0">
+                                    <Command>
+                                        <CommandInput placeholder="Search teacher..." />
+                                        <CommandList>
+                                            <CommandEmpty>No teacher found.</CommandEmpty>
+                                            <CommandGroup>
+                                                {teachers.map((teacher) => (
+                                                    <CommandItem
+                                                        key={teacher.id}
+                                                        value={`${teacher.first_name} ${teacher.last_name}`}
+                                                        onSelect={() => {
+                                                            setFormData({ ...formData, teacher_id: teacher.id });
+                                                            setIsTeacherOpen(false);
+                                                        }}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                formData.teacher_id === teacher.id ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        {teacher.first_name} {teacher.last_name}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+
                         <div className="space-y-2">
-                            <Label>Subject</Label>
+                            <Label>Subject {formData.teacher_id && filteredSubjects.length === 0 && <span className="text-destructive text-xs">(Teacher has no subjects assigned)</span>}</Label>
                             <Select
                                 value={formData.subject_id}
                                 onValueChange={(v) => setFormData({ ...formData, subject_id: v })}
+                                disabled={!formData.teacher_id || filteredSubjects.length === 0}
                             >
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select Subject" />
+                                    <SelectValue placeholder={formData.teacher_id ? "Select Subject" : "Select Teacher First"} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {subjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    {filteredSubjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Teacher</Label>
-                            <Select
-                                value={formData.teacher_id}
-                                onValueChange={(v) => setFormData({ ...formData, teacher_id: v })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Teacher" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Class</Label>
+                            <Label>Class {formData.teacher_id && filteredClasses.length === 0 && <span className="text-destructive text-xs">(Teacher has no classes assigned)</span>}</Label>
                             <Select
                                 value={formData.class_id}
                                 onValueChange={(v) => setFormData({ ...formData, class_id: v })}
+                                disabled={!formData.teacher_id || filteredClasses.length === 0}
                             >
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select Class" />
+                                    <SelectValue placeholder={formData.teacher_id ? "Select Class" : "Select Teacher First"} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                    {filteredClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -304,7 +394,7 @@ export default function Timetable() {
                             <Input
                                 value={formData.room}
                                 onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                                placeholder="e.g., Room 101"
+                                placeholder="e.g., Room 8A"
                                 required
                             />
                         </div>
@@ -348,8 +438,52 @@ export default function Timetable() {
                 .timetable-calendar .fc-button { background-color: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
                 .timetable-calendar .fc-event { cursor: pointer; border-radius: 6px; padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
                 .timetable-calendar .fc-event-title { white-space: pre-line; font-size: 0.8em; font-weight: 500; }
+
+                @media print {
+                    @page {
+                        size: landscape;
+                        margin: 10mm;
+                    }
+
+                    body * {
+                        visibility: hidden;
+                    }
+
+                    .timetable-printable-area, .timetable-printable-area * {
+                        visibility: visible;
+                    }
+
+                    .timetable-printable-area {
+                        position: fixed;
+                        left: 0;
+                        top: 0;
+                        width: 100vw;
+                        height: 100vh;
+                        background: white;
+                        z-index: 9999;
+                        padding: 20px;
+                        margin: 0;
+                    }
+
+                    .timetable-calendar {
+                        height: auto !important;
+                        width: 100% !important;
+                    }
+                    
+                    /* Ensure background colors are printed */
+                    .fc-event {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                        border: 1px solid #ccc;
+                    }
+
+                    /* Hide the card header shadow and border for cleaner print */
+                    .timetable-printable-area {
+                        box-shadow: none !important;
+                        border: none !important;
+                    }
+                }
             `}</style>
         </div>
     );
 }
-

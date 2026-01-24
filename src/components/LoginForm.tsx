@@ -7,12 +7,13 @@ import { AuthService } from "@/lib/auth";
 import { StorageService, School } from "@/lib/storage";
 import { SchoolService } from "@/lib/SchoolService";
 import { toast } from "@/hooks/use-toast";
-import { GraduationCap, ArrowRight, CheckCircle2, ShieldCheck, Users, Loader2, School as SchoolIcon, MapPin } from "lucide-react";
+import { GraduationCap, ArrowRight, CheckCircle2, ShieldCheck, Users, Loader2, School as SchoolIcon, MapPin, Eye, EyeOff } from "lucide-react";
 import heroImage from "@/assets/education-hero.jpg";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
   const [school, setSchool] = useState<School | null>(null);
@@ -79,7 +80,7 @@ export function LoginForm() {
     await new Promise(resolve => setTimeout(resolve, 800));
 
     try {
-      const user = await AuthService.login(email, password);
+      const user = await AuthService.login(email, password, school?.id);
 
       if (user) {
         // Dynamic Link Support:
@@ -129,10 +130,13 @@ export function LoginForm() {
         if (user.role === 'student') {
           const slug = user.school?.slug || 'national';
           navigate(`/${slug}/student`); // Was /student-portal, but App.tsx says /student
+        } else if (user.role === 'guardian') {
+          const slug = user.school?.slug || 'national';
+          navigate(`/${slug}/parent`); // Redirect to Parent Portal
         } else {
           if (user.school) {
             // Check if slug is somehow still broken (e.g. "godwin-banda") and fix it before navigating
-            const slugToUse = user.school.slug || user.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const slugToUse = user.school.slug || (user.school.name ? user.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'school');
             navigate(`/${slugToUse}/dashboard`);
           } else {
             navigate('/dashboard');
@@ -165,7 +169,7 @@ export function LoginForm() {
       admin: { email: 'admin@system.zm', pass: '123456' },
       deputy: { email: 'deputy@school.zm', pass: '123456' },
       senior: { email: 'senior@school.zm', pass: '123456' },
-      student: { email: 'student@school.zm', pass: '123456' }
+      student: { email: 'S008', pass: 'S008' }
     };
     setEmail(creds[role].email);
     setPassword(creds[role].pass);
@@ -345,11 +349,11 @@ export function LoginForm() {
           <div className="bg-white dark:bg-zinc-900 p-6 sm:p-8 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-black/50 border border-slate-100 dark:border-zinc-800">
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="email">Email or Username (Student ID)</Label>
+                <Label htmlFor="email">Email, Username (Student ID), or Parent Phone</Label>
                 <Input
                   id="email"
                   type="text"
-                  placeholder="name@school.zm or Enrolment ID"
+                  placeholder="name@school.zm, ID, or Phone"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -361,15 +365,28 @@ export function LoginForm() {
                   <Label htmlFor="password">Password</Label>
                   <a href="#" className="text-xs font-medium text-primary hover:text-primary/80">Forgot password?</a>
                 </div>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-11 bg-transparent border-slate-200 dark:border-zinc-800 focus:bg-white dark:focus:bg-zinc-800 transition-all placeholder:text-slate-400"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="h-11 bg-transparent border-slate-200 dark:border-zinc-800 focus:bg-white dark:focus:bg-zinc-800 transition-all placeholder:text-slate-400 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <Button

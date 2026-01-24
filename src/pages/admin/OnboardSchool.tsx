@@ -22,12 +22,58 @@ export default function AddSchool() {
         centerNumber: '',
         province: '',
         district: '',
+        constituency: '', // Added field
         ward: '',
         email: '',
         phone: '',
         type: 'GRZ',
-        type: 'GRZ',
     });
+
+    const ZAMBIA_LOCATIONS: Record<string, string[]> = {
+        "Central": [
+            "Chibombo", "Chisamba", "Chitambo", "Kabwe", "Kapiri Mposhi",
+            "Luano", "Mkushi", "Mumbwa", "Ngabwe", "Serenje", "Shibuyunji"
+        ],
+        "Copperbelt": [
+            "Chililabombwe", "Chingola", "Kalulushi", "Kitwe", "Luanshya",
+            "Lufwanyama", "Masaiti", "Mpongwe", "Mufulira", "Ndola"
+        ],
+        "Eastern": [
+            "Chadiza", "Chasefu", "Chipata", "Chipangali", "Kasenengwa",
+            "Katete", "Lumezi", "Lundazi", "Lusangazi", "Mambwe",
+            "Nyimba", "Petauke", "Sinda", "Vubwi"
+        ],
+        "Luapula": [
+            "Chembe", "Chiengi", "Chifunabuli", "Chipili", "Kawambwa",
+            "Lunga", "Mansa", "Milenge", "Mwansabombwe", "Mwense",
+            "Nchelenge", "Samfya"
+        ],
+        "Lusaka": [
+            "Chilanga", "Chirundu", "Chongwe", "Kafue", "Luangwa", "Lusaka", "Rufunsa"
+        ],
+        "Muchinga": [
+            "Chinsali", "Isoka", "Kanchibiya", "Lavushimanda", "Mafinga",
+            "Mpika", "Nakonde", "Shiwang'andu"
+        ],
+        "Northern": [
+            "Chilubi", "Kaputa", "Kasama", "Lunte", "Luwingu",
+            "Mbala", "Mporokoso", "Mpulungu", "Mungwi", "Nsama", "Senga Hill"
+        ],
+        "North-Western": [
+            "Chavuma", "Ikelenge", "Kabompo", "Kalumbila", "Kasempa",
+            "Manyinga", "Mufumbwe", "Mushindamo", "Mwinilunga", "Solwezi", "Zambezi"
+        ],
+        "Southern": [
+            "Chikankata", "Choma", "Gwembe", "Itezhi-Tezhi", "Kalomo",
+            "Kazungula", "Livingstone", "Mazabuka", "Monze", "Namwala",
+            "Pemba", "Siavonga", "Sinazongwe", "Zimba"
+        ],
+        "Western": [
+            "Kalabo", "Kaoma", "Limulunga", "Luampa", "Lukulu",
+            "Mitete", "Mongu", "Mulobezi", "Mwandi", "Nkeyema",
+            "Nalolo", "Senanga", "Sesheke", "Shangombo", "Sioma", "Sikongo"
+        ]
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -36,7 +82,7 @@ export default function AddSchool() {
         try {
             // Validate required fields
             if (!formData.name || !formData.centerNumber || !formData.province ||
-                !formData.district || !formData.email) {
+                !formData.district || !formData.constituency || !formData.email) {
                 toast({
                     title: "Validation Error",
                     description: "Please fill in all required fields",
@@ -69,6 +115,7 @@ export default function AddSchool() {
                 location: {
                     province: formData.province,
                     district: formData.district,
+                    constituency: formData.constituency,
                     ward: formData.ward || undefined,
                 },
                 type: formData.type,
@@ -107,7 +154,7 @@ export default function AddSchool() {
 
     return (
         <>
-            <div className="space-y-6 p-6 max-w-4xl mx-auto">
+            <div className="space-y-6 p-6 max-w-6xl mx-auto">
                 <div className="flex items-center gap-4">
                     <Link to="/admin/schools">
                         <Button variant="ghost" size="icon">
@@ -151,47 +198,62 @@ export default function AddSchool() {
                                 </div>
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="province">Province *</Label>
                                     <Select
                                         value={formData.province}
-                                        onValueChange={(value) => setFormData({ ...formData, province: value })}
+                                        onValueChange={(value) => setFormData({ ...formData, province: value, district: '' })}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select province" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="Lusaka">Lusaka</SelectItem>
-                                            <SelectItem value="Copperbelt">Copperbelt</SelectItem>
-                                            <SelectItem value="Southern">Southern</SelectItem>
-                                            <SelectItem value="Central">Central</SelectItem>
-                                            <SelectItem value="Eastern">Eastern</SelectItem>
-                                            <SelectItem value="Luapula">Luapula</SelectItem>
-                                            <SelectItem value="Northern">Northern</SelectItem>
-                                            <SelectItem value="North-Western">North-Western</SelectItem>
-                                            <SelectItem value="Western">Western</SelectItem>
-                                            <SelectItem value="Muchinga">Muchinga</SelectItem>
+                                            {Object.keys(ZAMBIA_LOCATIONS).sort().map(province => (
+                                                <SelectItem key={province} value={province}>{province}</SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="district">District *</Label>
-                                    <Input
-                                        id="district"
-                                        placeholder="Enter district"
-                                        required
+                                    <Select
                                         value={formData.district}
-                                        onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                                        onValueChange={(value) => setFormData({ ...formData, district: value, ward: '' })}
+                                        disabled={!formData.province}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder={formData.province ? "Select district" : "Select province first"} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {formData.province && ZAMBIA_LOCATIONS[formData.province]?.sort().map(district => (
+                                                <SelectItem key={district} value={district}>{district}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="constituency">Constituency *</Label>
+                                    <Input
+                                        id="constituency"
+                                        placeholder={formData.district ? "Enter constituency" : "Select district first"}
+                                        value={formData.constituency}
+                                        onChange={(e) => setFormData({ ...formData, constituency: e.target.value })}
+                                        disabled={!formData.district}
+                                        required
                                     />
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="ward">Ward</Label>
                                     <Input
                                         id="ward"
-                                        placeholder="Enter ward"
+                                        placeholder={formData.district ? "Enter ward" : "Select district first"}
                                         value={formData.ward}
                                         onChange={(e) => setFormData({ ...formData, ward: e.target.value })}
+                                        disabled={!formData.district}
                                     />
                                 </div>
                             </div>
@@ -263,10 +325,10 @@ export default function AddSchool() {
                         </Button>
                     </div>
                 </form>
-            </div>
+            </div >
 
             {/* Success Modal */}
-            <SchoolCreatedModal
+            < SchoolCreatedModal
                 open={showSuccessModal}
                 school={createdSchool}
                 onClose={() => {
@@ -283,7 +345,8 @@ export default function AddSchool() {
                         type: 'GRZ',
                         type: 'GRZ',
                     });
-                }}
+                }
+                }
             />
         </>
     );

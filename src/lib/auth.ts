@@ -63,7 +63,9 @@ export type UserRole =
   | 'director_finance'
   | 'director_special_education'
   // Student
-  | 'student';
+  | 'student'
+  // Guardian
+  | 'guardian';
 
 export type UserPermission =
   | 'manage_staff'
@@ -72,7 +74,9 @@ export type UserPermission =
   | 'manage_assessments'
   | 'view_reports'
   | 'manage_settings'
-  | 'manage_finance';
+  | 'manage_finance'
+  | 'manage_subjects'
+  | 'view_statistics';
 
 export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermission[]> = {
   // Head Teacher - Super User of the School
@@ -80,8 +84,10 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermission[]> = {
     'manage_staff',
     'manage_students',
     'manage_classes',
+    'manage_subjects',
     'manage_assessments',
     'view_reports',
+    'view_statistics',
     'manage_settings',
     'manage_finance'
   ],
@@ -91,68 +97,71 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermission[]> = {
     'manage_staff',
     'manage_students',
     'manage_classes',
+    'manage_subjects',
     'manage_assessments',
-    'view_reports'
+    'view_reports',
+    'view_statistics'
   ],
 
   // Senior Teacher - Academic Focus
   senior_teacher: [
-    'manage_students',
-    'manage_classes',
-    'manage_assessments',
-    'view_reports'
+    'view_reports',
+    'view_statistics'
   ],
 
   // Subject Teacher - Student & Assessment Focus
   subject_teacher: [
-    'manage_students', // Implicitly their own students usually
+    // 'manage_students', // Removed: Teachers shouldn't add students to registry
     'manage_assessments',
     'view_reports'
   ],
 
   // Specialized Roles (Limited Access)
-  career_guidance_teacher: ['view_reports'], // Need to view student performance to guide
+  career_guidance_teacher: ['view_reports', 'view_statistics'], // Need to view student performance to guide
   social_welfare_teacher: ['view_reports'],  // Need to view student backgrounds/issues
-  school_accountant: ['manage_finance', 'view_reports'], // Finance focus
-  house_tutor: ['manage_students'], // Manage boarding students potentially
-  boarding_teacher: ['manage_students'],
+  school_accountant: ['manage_finance', 'view_reports', 'view_statistics'], // Finance focus
+  house_tutor: ['view_reports'], // Manage boarding students potentially
+  boarding_teacher: ['view_reports'],
 
   // District Level
-  district_education_director: ['view_reports'],
-  district_standards_officer: ['view_reports'],
-  district_education_officer: ['view_reports'],
-  district_social_welfare_officer: ['view_reports'],
-  district_planning_officer: ['view_reports'],
-  district_career_officer: ['view_reports'],
-  district_statistical_officer: ['view_reports'],
-  district_accounts_officer: ['view_reports'],
+  district_education_director: ['view_reports', 'view_statistics'],
+  district_standards_officer: ['view_reports', 'view_statistics'],
+  district_education_officer: ['view_reports', 'view_statistics'],
+  district_social_welfare_officer: ['view_reports', 'view_statistics'],
+  district_planning_officer: ['view_reports', 'view_statistics'],
+  district_career_officer: ['view_reports', 'view_statistics'],
+  district_statistical_officer: ['view_reports', 'view_statistics'],
+  district_accounts_officer: ['view_reports', 'view_statistics'],
 
   // Provincial Level
-  provincial_education_officer: ['view_reports'],
-  provincial_standards_officer: ['view_reports'],
-  provincial_social_welfare: ['view_reports'],
-  provincial_planning_officer: ['view_reports'],
-  provincial_career_officer: ['view_reports'],
-  provincial_statistical_officer: ['view_reports'],
-  provincial_accounts_officer: ['view_reports'],
+  provincial_education_officer: ['view_reports', 'view_statistics'],
+  provincial_standards_officer: ['view_reports', 'view_statistics'],
+  provincial_social_welfare: ['view_reports', 'view_statistics'],
+  provincial_planning_officer: ['view_reports', 'view_statistics'],
+  provincial_career_officer: ['view_reports', 'view_statistics'],
+  provincial_statistical_officer: ['view_reports', 'view_statistics'],
+  provincial_accounts_officer: ['view_reports', 'view_statistics'],
 
   // System Level
   super_admin: [
-    'manage_staff', 'manage_students', 'manage_classes',
-    'manage_assessments', 'view_reports', 'manage_settings', 'manage_finance'
+    'manage_staff', 'manage_students', 'manage_classes', 'manage_subjects',
+    'manage_assessments', 'view_reports', 'view_statistics', 'manage_settings', 'manage_finance'
   ],
 
   // National Level
-  permanent_secretary: ['view_reports'],
-  director_examinations: ['view_reports'],
-  director_curriculum: ['view_reports'],
-  director_planning: ['view_reports'],
-  director_social_welfare: ['view_reports'],
-  director_finance: ['view_reports'],
-  director_special_education: ['view_reports'],
+  permanent_secretary: ['view_reports', 'view_statistics'],
+  director_examinations: ['view_reports', 'view_statistics'],
+  director_curriculum: ['view_reports', 'view_statistics'],
+  director_planning: ['view_reports', 'view_statistics'],
+  director_social_welfare: ['view_reports', 'view_statistics'],
+  director_finance: ['view_reports', 'view_statistics'],
+  director_special_education: ['view_reports', 'view_statistics'],
 
   // Student
-  student: ['view_reports'] // Can view their own reports
+  student: ['view_reports'], // Can view their own reports
+
+  // Guardian
+  guardian: ['view_reports']
 };
 
 export class AuthService {
@@ -183,10 +192,10 @@ export class AuthService {
         }
       },
       'teacher@school.zm': {
-        id: '4',
+        id: 'teacher_1',
         email: 'teacher@school.zm',
         firstName: 'Sarah',
-        lastName: 'Kabwe',
+        lastName: 'Mwale',
         role: 'subject_teacher',
         permissions: DEFAULT_PERMISSIONS.subject_teacher,
         school: {
@@ -299,8 +308,9 @@ export class AuthService {
 
         // Check if missing or if school exists but slug is missing (stale data)
         const isStale = stored && stored.school && !stored.school.slug;
+        const idMismatch = stored && stored.id !== initial.id;
 
-        if (!stored || isStale) {
+        if (!stored || isStale || idMismatch) {
           storedUsers[key] = initial;
           updated = true;
         }
@@ -317,17 +327,19 @@ export class AuthService {
     return initialUsers;
   }
 
-  static async login(identifier: string, password: string): Promise<User | null> {
+  static async login(identifier: string, password: string, schoolId?: string): Promise<User | null> {
     const users = this.getMockUsers();
 
-    // 1. Try Mock Users (Admins/Teachers) - Identifier is Email
+    // 1. Mock Users check (Enabled for Demo Access)
     const dbUsers = this.getMockUsers();
-    let user = dbUsers[identifier];
+    const mockUser = dbUsers[identifier];
 
-    if (user && (password === '123456' || password === 'password123')) {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
+    if (mockUser && (password === '123456' || password === 'password123')) {
+      // Allow mock login if the user exists in our mock registry
+      console.log(`[Auth] Logging in with mock profile: ${identifier}`);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(mockUser));
       window.dispatchEvent(new Event('authChange'));
-      return user;
+      return mockUser;
     }
 
     // 2. Try Supabase Profiles (For Auto-Generated Users)
@@ -360,7 +372,7 @@ export class AuthService {
               district: profile.school.district,
               ward: profile.school.ward || '',
               centerNumber: profile.school.center_number,
-              slug: profile.school.slug || profile.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+              slug: profile.school.slug || (profile.school.name ? profile.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'school'),
               standardCapacity: profile.school.standard_capacity || 500,
               totalEnrolment: profile.school.total_enrolment || 0
             } : undefined
@@ -387,22 +399,38 @@ export class AuthService {
         const { supabase } = await import('./supabaseClient');
 
         // Try by Enrolment Number first
-        let { data: student, error } = await supabase
+        let query = supabase
           .from('students')
           .select('*, schools!inner(*)')
-          .eq('enrolment_number', identifier)
-          .maybeSingle();
+          .eq('enrolment_number', identifier);
+
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
+
+        let { data: students, error } = await query.limit(1);
+
+        let student = students && students.length > 0 ? students[0] : null;
 
         // If not found, try National ID
-        if (!student || error) {
-          const result = await supabase
+        if (!student) {
+          let natQuery = supabase
             .from('students')
             .select('*, schools!inner(*)')
-            .eq('national_id', identifier) // Check national_id
-            .maybeSingle();
+            .eq('national_id', identifier); // Check national_id
 
-          student = result.data;
-          error = result.error;
+          if (schoolId) {
+            natQuery = natQuery.eq('school_id', schoolId);
+          }
+
+          const result = await natQuery.limit(1);
+
+          if (result.data && result.data.length > 0) {
+            student = result.data[0];
+            error = null;
+          } else {
+            error = result.error;
+          }
         }
 
         if (student && !error) {
@@ -430,7 +458,7 @@ export class AuthService {
                 standardCapacity: student.schools.standard_capacity,
                 totalEnrolment: student.schools.total_enrolment,
                 centerNumber: student.schools.center_number,
-                slug: student.schools.slug || student.schools.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+                slug: student.schools.slug || (student.schools.name ? student.schools.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'school')
               },
               permissions: DEFAULT_PERMISSIONS.student
             };
@@ -441,7 +469,111 @@ export class AuthService {
           }
         }
       } catch (err) {
-        console.error("Student login error:", err);
+      }
+    }
+
+    // 3. Try Guardian Login (Identifier is Phone Number)
+    // Robust Fuzzy Matching for Phone Numbers
+    if (true) {
+      try {
+        const { supabase } = await import('./supabaseClient');
+
+        // Normalize input: remove all non-digits (spaces, pluses, dashes)
+        // Keep it simple: remove all non-numeric chars except maybe leading '+' if needed, 
+        // but for comparison, usually better to strip everything.
+        // Actually, let's strip everything to digits.
+        const cleanInput = identifier.replace(/\D/g, '');
+
+        // If the input doesn't look like a phone number (too short), skip
+        if (cleanInput.length < 5) return null;
+
+        // Fetch students - we have to fetch potential matches. 
+        // We will match Phone OR ID (nrc) now.
+        let query = supabase
+          .from('students')
+          .select('*, schools!inner(*)')
+          .not('parent_guardian', 'is', null);
+
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
+
+        // Limit to 100 to prevent performance issues, assuming not too many guardians with same-ish numbers
+        // In a real production app with millions of records, this needs a dedicated search index or RPC.
+        const { data: students, error } = await query.limit(100);
+
+        if (students && !error) {
+          // Iterate and fuzzy match
+          const match = students.find(s => {
+            const pg = s.parent_guardian || {};
+            const phones = [pg.phoneNumber, pg.contactNumber].filter(Boolean);
+
+            return phones.some(p => {
+              const cleanP = String(p).replace(/\D/g, '');
+
+              // 1. Exact match
+              if (cleanP === cleanInput) return true;
+
+              // 2. Last 9 digits match (Handles 097... vs 26097...)
+              if (cleanP.length >= 9 && cleanInput.length >= 9) {
+                const last9P = cleanP.slice(-9);
+                const last9Input = cleanInput.slice(-9);
+                return last9P === last9Input;
+              }
+
+              return false;
+            });
+          });
+
+          if (match) {
+            // Password check: Password must basically match the identifier provided by the user
+            // We assume if they found the account with this number, they own it. 
+            // In reality, password should be checked against a stored hash, but here we used "password = phone" logic.
+            // Since user entered `identifier` as both login and pass, and we purely matched on `identifier`, 
+            // the credentials are "valid" by definition of this flow.
+
+            if (password === identifier) {
+              const student = match;
+
+              // Extract guardian name
+              const rawGuardian = student.parent_guardian || {};
+              const guardianName = rawGuardian.name || rawGuardian.firstName || 'Guardian';
+              const [firstName, ...lastNameParts] = guardianName.split(' ');
+              const lastName = lastNameParts.join(' ');
+
+              const guardianUser: User = {
+                id: `guardian_${cleanInput}`,
+                email: identifier,
+                firstName: firstName || 'Guardian',
+                lastName: lastName || '',
+                role: 'guardian',
+                school: {
+                  id: student.schools.id,
+                  name: student.schools.name,
+                  type: student.schools.type,
+                  province: student.schools.province,
+                  district: student.schools.district,
+                  ward: student.schools.ward,
+                  standardCapacity: student.schools.standard_capacity,
+                  totalEnrolment: student.schools.total_enrolment,
+                  centerNumber: student.schools.center_number,
+                  slug: student.schools.slug || (student.schools.name ? student.schools.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'school')
+                },
+                metadata: {
+                  studentId: student.id,
+                  studentName: `${student.first_name} ${student.surname}`
+                },
+                permissions: DEFAULT_PERMISSIONS.guardian
+              };
+
+              localStorage.setItem(this.STORAGE_KEY, JSON.stringify(guardianUser));
+              window.dispatchEvent(new Event('authChange'));
+              return guardianUser;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Guardian login error:", err);
       }
     }
 
@@ -479,20 +611,42 @@ export class AuthService {
 
     const user = JSON.parse(userData);
 
+    // Force update permissions from DEFAULT_PERMISSIONS to ensure they match the latest code configuration
+    // This fixes issues where stale permissions persist in local storage
+    if (user.role && DEFAULT_PERMISSIONS[user.role]) {
+      const currentPermissions = JSON.stringify(user.permissions);
+      const newPermissions = JSON.stringify(DEFAULT_PERMISSIONS[user.role]);
+
+      if (currentPermissions !== newPermissions) {
+        user.permissions = DEFAULT_PERMISSIONS[user.role];
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
+      }
+    }
+
     // Auto-patch session if school slug is missing OR if it accidentally matches the user's name slug (common data corruption issue)
     // We detect "bad slugs" by checking if it looks like a person's name slug but should be a school slug
     // We detect "bad slugs" by checking if it looks like a person's name slug but should be a school slug
+    // Auto-patch session if school slug is missing OR if it accidentally matches the user's name slug (common data corruption issue)
     const nameSlug = user.firstName && user.lastName ? `${user.firstName.toLowerCase()}-${user.lastName.toLowerCase()}` : '';
     // Only patch if slug is missing OR exactly matches the user's name slug (not just includes it)
     const isBadSlug = user.school && (!user.school.slug || (nameSlug && user.school.slug === nameSlug));
 
-    if (isBadSlug) {
-      // Regenerate slug from school name, which is more reliable
+    // Auto-patch session if ID mismatches the canonical mock data (fixes dev environment shifts)
+    const mockUsers = this.getMockUsers();
+    const canonicalUser = mockUsers[user.email];
+    const isIdMismatch = canonicalUser && canonicalUser.id !== user.id;
+
+    if (isBadSlug && user.school?.name) {
+      // Regenerate slug from school name
       const schoolNameSlug = user.school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       const centerSlug = user.school.centerNumber ? `-${user.school.centerNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '';
       user.school.slug = `${schoolNameSlug}${centerSlug}`;
-      // Update storage to persist the fix
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
+    } else if (isIdMismatch) {
+      // Update the session user to match the canonical user (preserving the session logic but fixing identity)
+      // We replace the whole user object with the canonical one to ensure full sync
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(canonicalUser));
+      return canonicalUser;
     }
 
     return user;

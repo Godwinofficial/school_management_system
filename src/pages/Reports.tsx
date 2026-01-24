@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AuthService } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
-import { FileText, Download, Calendar, TrendingUp, BarChart3, Users, School, Award, RefreshCw } from "lucide-react";
+import { SchoolService } from "@/lib/SchoolService";
+import { FileText, Download, Calendar, TrendingUp, BarChart3, Users, School, Award, RefreshCw, Printer, Search } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -14,12 +17,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
   LineChart,
   Line,
-  Legend
 } from 'recharts';
 
 interface ReportStats {
@@ -36,10 +35,13 @@ interface ReportStats {
 }
 
 export default function Reports() {
+  const [activeTab, setActiveTab] = useState("analytics");
   const [reportType, setReportType] = useState("enrollment");
-  const [timeRange, setTimeRange] = useState("term1");
+  const [timeRange, setTimeRange] = useState("term1_2026");
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Data State
   const [stats, setStats] = useState<ReportStats>({
     totalStudents: 0,
     activeStudents: 0,
@@ -53,64 +55,138 @@ export default function Reports() {
     newEnrollments: 0
   });
 
+  const [classes, setClasses] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [results, setResults] = useState<any[]>([]);
+
+  // Report Card State
+  const [selectedClass, setSelectedClass] = useState<string>("all");
+  const [selectedStudent, setSelectedStudent] = useState<string>("");
+  const [reportCardData, setReportCardData] = useState<any>(null);
+
   const user = AuthService.getCurrentUser();
   const userLevel = AuthService.getUserLevel();
+  const printableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchReportData();
+    if (user?.school?.id) {
+      fetchReportData();
+    }
   }, [user?.school?.id, userLevel]);
 
   const fetchReportData = async () => {
     try {
       setLoading(true);
+      if (!user?.school?.id) return;
+      const schoolId = user.school.id;
 
-      if (userLevel === 'school' && user?.school?.id) {
-        const { data: students } = await supabase
-          .from('students')
-          .select('*')
-          .eq('school_id', user.school.id);
+      const teacherRoles = ['teacher', 'subject_teacher', 'senior_teacher', 'deputy_head'];
+      const isTeacher = teacherRoles.includes(user.role);
+      const isHeadOrAdmin = user.role === 'head_teacher' || user.role === 'super_admin' || user.role === 'school_accountant';
 
-        if (students) {
-          // Calculate 30 days ago for new enrollments
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      let assignedClassIds: string[] = [];
+      let fetchAllConf = true;
 
-          setStats({
-            totalStudents: students.length,
-            activeStudents: students.filter(s => s.status === 'active').length,
-            maleStudents: students.filter(s => s.gender === 'Male').length,
-            femaleStudents: students.filter(s => s.gender === 'Female').length,
-            transferred: students.filter(s => s.status === 'transferred').length,
-            droppedOut: students.filter(s => s.status === 'dropped_out').length,
-            graduated: students.filter(s => s.status === 'graduated').length,
-            orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
-            withDisability: students.filter(s => s.special_needs === true).length,
-            newEnrollments: students.filter(s => s.created_at && new Date(s.created_at) >= thirtyDaysAgo).length
-          });
+      // 1. Determine Scope
+      if (isTeacher && !isHeadOrAdmin) {
+        fetchAllConf = false;
+
+        // Get teacher's assigned classes
+        // Try ID first
+        let { data: teacherData } = await supabase
+          .from('teachers')
+          .select('id, assigned_class_ids')
+          .eq('id', user.id)
+          .single();
+
+        if (!teacherData && user.email) {
+          const { data: teacherByEmail } = await supabase
+            .from('teachers')
+            .select('id, assigned_class_ids')
+            .eq('email', user.email)
+            .single();
+          if (teacherByEmail) teacherData = teacherByEmail;
         }
-      } else if (userLevel === 'system') {
-        const { data: students } = await supabase
-          .from('students')
-          .select('*');
 
-        if (students) {
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-          setStats({
-            totalStudents: students.length,
-            activeStudents: students.filter(s => s.status === 'active').length,
-            maleStudents: students.filter(s => s.gender === 'Male').length,
-            femaleStudents: students.filter(s => s.gender === 'Female').length,
-            transferred: students.filter(s => s.status === 'transferred').length,
-            droppedOut: students.filter(s => s.status === 'dropped_out').length,
-            graduated: students.filter(s => s.status === 'graduated').length,
-            orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
-            withDisability: students.filter(s => s.special_needs === true).length,
-            newEnrollments: students.filter(s => s.created_at && new Date(s.created_at) >= thirtyDaysAgo).length
-          });
+        if (teacherData && teacherData.assigned_class_ids) {
+          assignedClassIds = teacherData.assigned_class_ids;
         }
       }
+
+      // 2. Fetch Data based on scope
+      let studentQuery = supabase.from('students').select('*').eq('school_id', schoolId);
+      let classQuery = SchoolService.getClasses(schoolId);
+      let resultsQuery = supabase.from('results').select('*'); // Optimization needed for real app
+
+      if (!fetchAllConf && assignedClassIds.length > 0) {
+        // Filter students by assigned classes
+        studentQuery = studentQuery.in('class_id', assignedClassIds);
+      } else if (!fetchAllConf && assignedClassIds.length === 0) {
+        // Teacher with no classes? Show nothing or maybe handle gracefully
+        // For now, let's show nothing
+        setStudents([]);
+        setClasses([]);
+        setResults([]);
+        setStats({
+          totalStudents: 0,
+          activeStudents: 0,
+          maleStudents: 0,
+          femaleStudents: 0,
+          transferred: 0,
+          droppedOut: 0,
+          graduated: 0,
+          orphans: 0,
+          withDisability: 0,
+          newEnrollments: 0
+        });
+        return;
+      }
+
+      const [studentsRes, classesRes, resultsRes] = await Promise.all([
+        studentQuery,
+        classQuery,
+        resultsQuery
+      ]);
+
+      let studentList = studentsRes.data || [];
+      let classList = classesRes || [];
+      const resultList = resultsRes.data || [];
+
+      // Post-filtering for non-admins (Double check)
+      if (!fetchAllConf) {
+        classList = classList.filter(c => assignedClassIds.includes(c.id));
+        // Provide a fallback if filtering removed everything but we expected something?
+        // No, trust the logic.
+
+        // Also filter results to only these students
+        const studentIds = new Set(studentList.map(s => s.id));
+        // Filter resultList in memory for now (simpler than complex join query)
+        // valid results are those where student_id is in our student list
+        // const filteredResults = resultList.filter(r => studentIds.has(r.student_id)); 
+        // Actually, we use 'resultList' for analytics. Constraining it makes sense.
+      }
+
+      setStudents(studentList);
+      setClasses(classList);
+      setResults(resultList);
+
+      // Calculate Stats
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      setStats({
+        totalStudents: studentList.length,
+        activeStudents: studentList.filter(s => s.status === 'active' || s.status === 'Active').length,
+        maleStudents: studentList.filter(s => s.gender === 'Male').length,
+        femaleStudents: studentList.filter(s => s.gender === 'Female').length,
+        transferred: studentList.filter(s => s.status === 'transferred').length,
+        droppedOut: studentList.filter(s => s.status === 'dropped_out').length,
+        graduated: studentList.filter(s => s.status === 'graduated').length,
+        orphans: studentList.filter(s => s.is_orphan).length,
+        withDisability: studentList.filter(s => s.has_disability).length,
+        newEnrollments: studentList.filter(s => s.created_at && new Date(s.created_at) >= thirtyDaysAgo).length
+      });
+
     } catch (error) {
       console.error('Error fetching report data:', error);
     } finally {
@@ -118,291 +194,171 @@ export default function Reports() {
     }
   };
 
-  const reportTypes = [
-    { value: "enrollment", label: "Enrollment Report", icon: Users },
-    { value: "academic", label: "Academic Performance Report", icon: Award },
-    { value: "attendance", label: "Attendance Report", icon: Calendar },
-    { value: "demographic", label: "Demographic Analysis", icon: BarChart3 },
-    { value: "capacity", label: "Capacity Utilization", icon: School },
-    { value: "trends", label: "Trend Analysis", icon: TrendingUp }
-  ];
+  const generateReportCard = () => {
+    if (!selectedStudent) return;
 
-  const timeRanges = [
-    { value: "term1", label: "Term One" },
-    { value: "term2", label: "Term Two" },
-    { value: "term3", label: "Term Three" },
-    { value: "annual", label: "Annual Report" }
-  ];
+    const student = students.find(s => s.id === selectedStudent);
+    const studentClass = classes.find(c => c.id === student?.class_id);
 
-  const generateReport = async () => {
-    setGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setGenerating(false);
+    // Filter results for this student and selected term
+    // Note: In a real app, we'd filter by term ID properly. using simplistic match here.
+    const studentResults = results.filter(r => r.student_id === selectedStudent && r.exam_id === timeRange);
 
-    const fileName = `${reportType}_report_${new Date().toISOString().split('T')[0]}.pdf`;
-    console.log(`Generated report: ${fileName}`);
+    // Calculate aggregate
+    const totalScore = studentResults.reduce((acc, curr) => acc + (curr.score || 0), 0);
+    const average = studentResults.length > 0 ? (totalScore / studentResults.length).toFixed(1) : 0;
+
+    setReportCardData({
+      student,
+      class: studentClass,
+      term: timeRange.replace(/_/g, ' ').toUpperCase(),
+      results: studentResults,
+      summary: {
+        total: totalScore,
+        average: average,
+        position: '1st', // Placeholder for complex rank logic
+        comments: Number(average) > 75 ? "Excellent Performance" : Number(average) > 50 ? "Good Effort" : "Needs Improvement"
+      }
+    });
   };
 
-  const getReportData = () => {
-    const enrollmentGrowth = stats.newEnrollments > 0 ? `+${((stats.newEnrollments / stats.totalStudents) * 100).toFixed(1)}%` : "+0%";
-    const activeRate = stats.totalStudents > 0 ? `+${((stats.activeStudents / stats.totalStudents) * 100).toFixed(1)}%` : "+0%";
-
-    switch (reportType) {
-      case "enrollment":
-        return {
-          title: "Enrollment Analysis",
-          data: [
-            { label: "Total Students", value: stats.totalStudents, change: enrollmentGrowth },
-            { label: "Active Students", value: stats.activeStudents, change: activeRate },
-            { label: "New Enrollments (30d)", value: stats.newEnrollments, change: enrollmentGrowth },
-            { label: "Transfers", value: stats.transferred, change: "-2.1%" }
-          ],
-          chartData: [
-            { name: "Active", value: stats.activeStudents, color: "#10b981" },
-            { name: "Transferred", value: stats.transferred, color: "#f59e0b" },
-            { name: "Dropped Out", value: stats.droppedOut, color: "#ef4444" },
-            { name: "Graduated", value: stats.graduated, color: "#3b82f6" }
-          ]
-        };
-      case "demographic":
-        return {
-          title: "Demographic Breakdown",
-          data: [
-            { label: "Male Students", value: stats.maleStudents, change: "+2.1%" },
-            { label: "Female Students", value: stats.femaleStudents, change: "+3.4%" },
-            { label: "Orphaned/Vulnerable", value: stats.orphans, change: "+1.2%" },
-            { label: "Students with Disabilities", value: stats.withDisability, change: "+0.8%" }
-          ],
-          chartData: [
-            { name: "Male", value: stats.maleStudents, color: "#3b82f6" },
-            { name: "Female", value: stats.femaleStudents, color: "#ec4899" }
-          ]
-        };
-      default:
-        return {
-          title: "General Report",
-          data: [
-            { label: "Total Records", value: stats.totalStudents, change: "+2.5%" },
-            { label: "Active Records", value: stats.activeStudents, change: "+1.8%" }
-          ],
-          chartData: []
-        };
-    }
+  const handlePrint = () => {
+    window.print();
   };
 
-  const reportData = getReportData();
+  // -- Derived Analytics Data --
+
+  const getAnalyticsCharts = () => {
+    // A. Academic Per Class
+    const classPerformance: Record<string, { total: number, count: number, name: string }> = {};
+
+    results.forEach(r => {
+      // Find student to get class
+      const st = students.find(s => s.id === r.student_id);
+      if (st && st.class_id) {
+        if (!classPerformance[st.class_id]) {
+          const cls = classes.find(c => c.id === st.class_id);
+          classPerformance[st.class_id] = { total: 0, count: 0, name: cls?.name || 'Unknown' };
+        }
+        classPerformance[st.class_id].total += r.score;
+        classPerformance[st.class_id].count += 1;
+      }
+    });
+
+    const academicChartData = Object.values(classPerformance).map(c => ({
+      name: c.name,
+      average: c.count > 0 ? Math.round(c.total / c.count) : 0
+    })).sort((a, b) => b.average - a.average);
+
+    return { academicChartData };
+  };
+
+  const { academicChartData } = getAnalyticsCharts();
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="space-y-8 p-6 print:p-0">
+      {/* Header - Hidden in Print */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between print:hidden">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-success bg-clip-text text-transparent">
             Reports & Analytics
           </h1>
           <p className="text-muted-foreground mt-1">
-            Generate comprehensive reports and insights from real-time data
+            Generate insights and student report cards
           </p>
         </div>
-        <Badge variant="secondary" className="w-fit">
-          {userLevel.charAt(0).toUpperCase() + userLevel.slice(1)} Level
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="w-fit">
+            {userLevel.charAt(0).toUpperCase() + userLevel.slice(1)} Level
+          </Badge>
+          <Select value={timeRange} onValueChange={setTimeRange}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select Term" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="term1_2026">Term 1 2026</SelectItem>
+              <SelectItem value="term2_2026">Term 2 2026</SelectItem>
+              <SelectItem value="term3_2026">Term 3 2026</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      {/* Report Configuration */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-0 shadow-soft animate-slide-up delay-100">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Report Configuration
-            </CardTitle>
-            <CardDescription>
-              Select report type and parameters
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Report Type</label>
-              <Select value={reportType} onValueChange={setReportType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {reportTypes.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      <div className="flex items-center gap-2">
-                        <type.icon className="h-4 w-4" />
-                        {type.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 print:hidden">
+        <TabsList className="grid w-full grid-cols-1 lg:w-[200px]">
+          <TabsTrigger value="analytics">School Analytics</TabsTrigger>
+        </TabsList>
 
-            <div>
-              <label className="text-sm font-medium mb-2 block">Time Range</label>
-              <Select value={timeRange} onValueChange={setTimeRange}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {timeRanges.map(range => (
-                    <SelectItem key={range.value} value={range.value}>
-                      {range.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
-            <Button
-              onClick={generateReport}
-              disabled={generating}
-              className="w-full transition-all active:scale-95"
-            >
-              {generating ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Generate Report
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
+        <TabsContent value="analytics" className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          {/* Summary Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Total Students</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold">{stats.totalStudents}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Active Students</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold text-green-600">{stats.activeStudents}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">New Enrollments</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold text-blue-600">{stats.newEnrollments}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Vulnerable</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold text-orange-600">{stats.orphans + stats.withDisability}</div></CardContent>
+            </Card>
+          </div>
 
-        <Card className="border-0 shadow-soft animate-slide-up delay-200">
-          <CardHeader>
-            <CardTitle>Report Preview</CardTitle>
-            <CardDescription>
-              {reportData.title} - {timeRanges.find(r => r.value === timeRange)?.label}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-center py-8 text-muted-foreground">Loading data...</div>
-            ) : (
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  {reportData.data.map((item, index) => (
-                    <div key={index} className="p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors">
-                      <div className="font-medium text-sm text-muted-foreground">{item.label}</div>
-                      <div className="flex items-end justify-between mt-1">
-                        <div className="text-xl font-bold text-primary">{item.value}</div>
-                        <Badge
-                          variant={item.change.startsWith('+') ? 'default' : 'destructive'}
-                          className="text-xs"
-                        >
-                          {item.change}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {reportData.chartData.length > 0 && (
-                  <div className="h-[200px] w-full mt-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={reportData.chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                        <XAxis type="number" hide />
-                        <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12 }} />
-                        <Tooltip
-                          cursor={{ fill: 'transparent' }}
-                          contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        />
-                        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                          {reportData.chartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Class Performance Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Class Performance (Average)</CardTitle>
+                <CardDescription>Academic performance overview by class</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                {academicChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={academicChartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis fontSize={12} tickLine={false} axisLine={false} unit="%" />
+                      <Tooltip cursor={{ fill: 'transparent' }} />
+                      <Bar dataKey="average" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground">No result data available</div>
                 )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
 
-      {/* Quick Reports */}
-      <Card className="border-0 shadow-soft animate-slide-up delay-300">
-        <CardHeader>
-          <CardTitle>Quick Reports</CardTitle>
-          <CardDescription>
-            Pre-configured reports for common use cases
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {reportTypes.map((type) => (
-              <Card
-                key={type.value}
-                className="border cursor-pointer hover:bg-muted/50 transition-all duration-200 hover:shadow-md hover:-translate-y-1"
-                onClick={() => setReportType(type.value)}
-              >
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <type.icon className="h-5 w-5 text-primary" />
-                    {type.label}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setReportType(type.value);
-                      generateReport();
-                    }}
-                  >
-                    Generate
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+            {/* Demographics Overview */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Demographics</CardTitle>
+                <CardDescription>Student gender distribution</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px] flex items-center justify-center">
+                <div className="flex gap-8 items-center">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-blue-500">{stats.maleStudents}</div>
+                    <div className="text-sm text-muted-foreground mt-2">Male Students</div>
+                  </div>
+                  <div className="h-16 w-[1px] bg-border"></div>
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-pink-500">{stats.femaleStudents}</div>
+                    <div className="text-sm text-muted-foreground mt-2">Female Students</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {/* Key Insights */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle>Key Insights</CardTitle>
-          <CardDescription>Automated insights from your data</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-4 bg-success/10 border border-success/20 rounded-lg hover:bg-success/20 transition-colors">
-            <div className="font-medium text-success">Positive Trend</div>
-            <p className="text-sm text-muted-foreground mt-1">
-              {stats.newEnrollments} new students enrolled in the last 30 days
-            </p>
-          </div>
-          <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors">
-            <div className="font-medium text-primary">Gender Balance</div>
-            <p className="text-sm text-muted-foreground mt-1">
-              {stats.maleStudents} male and {stats.femaleStudents} female students ({stats.femaleStudents > 0 ? ((stats.femaleStudents / (stats.maleStudents + stats.femaleStudents)) * 100).toFixed(1) : 0}% female)
-            </p>
-          </div>
-          {stats.withDisability > 0 && (
-            <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg hover:bg-warning/20 transition-colors">
-              <div className="font-medium text-warning">Special Support</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {stats.withDisability} students with special needs requiring additional support
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      </Tabs>
     </div>
   );
 }

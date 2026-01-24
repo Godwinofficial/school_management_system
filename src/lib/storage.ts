@@ -13,6 +13,15 @@ export interface School {
   slug?: string;
 }
 
+export interface AttendanceRecord {
+  id: string;
+  studentId: string;
+  classId?: string;
+  date: string; // YYYY-MM-DD
+  status: 'Present' | 'Absent' | 'Late' | 'Sick' | 'Excused';
+  remarks?: string;
+}
+
 export interface Teacher {
   id: string;
   schoolId: string;
@@ -78,6 +87,8 @@ export interface Student {
   nationality?: string;
   religion?: string;
   previousSchool?: string;
+  transferReason?: string;
+  transferDate?: string;
 
   // Family Information (Traditional)
   father?: {
@@ -85,6 +96,7 @@ export interface Student {
     surname: string;
     otherNames?: string;
     contactNumber?: string;
+    email?: string; // Added for parent login
     residentialAddress?: string;
     nationality: string;
     nationalId?: string;
@@ -97,6 +109,7 @@ export interface Student {
     surname: string;
     otherNames?: string;
     contactNumber?: string;
+    email?: string; // Added for parent login
     residentialAddress?: string;
     nationality: string;
     nationalId?: string;
@@ -113,6 +126,7 @@ export interface Student {
     occupation: string;
     dateOfBirth: string;
     contactNumber: string;
+    email?: string; // Added for parent login
   };
 
   // Unified Family Info (for imports/simplified views)
@@ -150,12 +164,14 @@ export interface Student {
   careerPathways: string[];
   specialInformation?: string;
   documents?: any[];
+  missingRecords?: string[]; // Array of missing document names e.g. ['Birth Certificate', 'Transfer Letter']
 
   // Status
   status: 'Active' | 'Transferred' | 'Dropped Out' | 'Graduated' | 'Deceased' | string;
   isOrphan: boolean;
   hasDisability: boolean;
   isMarried: boolean;
+  school?: School; // Joined data
 }
 
 export interface TeacherData {
@@ -237,6 +253,40 @@ export class StorageService {
   private static readonly CLASS_DATA_KEY = 'nrs_class_data';
   private static readonly EXAMS_KEY = 'nrs_exams';
   private static readonly ASSESSMENTS_KEY = 'nrs_assessments';
+  private static readonly ATTENDANCE_KEY = 'nrs_attendance';
+
+  // Attendance
+  static getAttendance(date: string): AttendanceRecord[] {
+    const all = JSON.parse(localStorage.getItem(this.ATTENDANCE_KEY) || '[]');
+    return all.filter((r: AttendanceRecord) => r.date === date);
+  }
+
+  static getAttendanceByClass(classId: string): AttendanceRecord[] {
+    const all: AttendanceRecord[] = JSON.parse(localStorage.getItem(this.ATTENDANCE_KEY) || '[]');
+    return all.filter((r) => r.classId === classId);
+  }
+
+  static getAttendanceByStudents(studentIds: string[]): AttendanceRecord[] {
+    const all: AttendanceRecord[] = JSON.parse(localStorage.getItem(this.ATTENDANCE_KEY) || '[]');
+    return all.filter((r) => studentIds.includes(r.studentId));
+  }
+
+  static saveAttendance(records: AttendanceRecord[]): void {
+    const all: AttendanceRecord[] = JSON.parse(localStorage.getItem(this.ATTENDANCE_KEY) || '[]');
+    const newRecords = [...all];
+
+    records.forEach(record => {
+      // Remove existing record for same student and date if exists
+      const index = newRecords.findIndex(r => r.studentId === record.studentId && r.date === record.date);
+      if (index >= 0) {
+        newRecords[index] = record;
+      } else {
+        newRecords.push(record);
+      }
+    });
+
+    localStorage.setItem(this.ATTENDANCE_KEY, JSON.stringify(newRecords));
+  }
 
   // Teacher Dashboard Data Methods
   static getTeacherData(teacherId: string): TeacherData {
@@ -586,7 +636,8 @@ export class StorageService {
     // Ensure all schools have slugs (poly-fill for old data)
     return schools.map(s => {
       if (!s.slug) {
-        const nameSlug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const safeName = s.name || 'school';
+        const nameSlug = safeName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
         const centerSlug = s.centerNumber ? `-${s.centerNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '';
         s.slug = `${nameSlug}${centerSlug}`;
       }
@@ -606,18 +657,20 @@ export class StorageService {
       if (school.slug === idOrSlug) return true;
 
       // Match by generated slug (name based)
-      const nameSlug = school.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      if (nameSlug === term) return true;
+      const safeName = school.name || '';
+      const nameSlug = safeName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (nameSlug && nameSlug === term) return true;
 
       // Match by generated slug (name + center number based)
-      const extendedSlug = `${nameSlug}-${school.centerNumber.toLowerCase()}`;
+      const safeCenterNumber = school.centerNumber || '';
+      const extendedSlug = `${nameSlug}-${safeCenterNumber.toLowerCase()}`;
       if (extendedSlug === term) return true;
 
       // Loose match: if the search term starts with the name slug (handles variations like -lpu2026 vs -lps001)
-      if (term.startsWith(nameSlug)) return true;
+      if (nameSlug && term.startsWith(nameSlug)) return true;
 
       // Match by center number
-      if (school.centerNumber.toLowerCase() === term) return true;
+      if (safeCenterNumber && safeCenterNumber.toLowerCase() === term) return true;
 
       return false;
     }) || null;

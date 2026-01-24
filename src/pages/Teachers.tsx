@@ -118,9 +118,9 @@ export default function Teachers() {
     if (searchTerm.trim() !== "") {
       const term = searchTerm.toLowerCase();
       result = result.filter(teacher =>
-        teacher.firstName.toLowerCase().includes(term) ||
-        teacher.surname.toLowerCase().includes(term) ||
-        teacher.employeeNumber.toLowerCase().includes(term) ||
+        (teacher.firstName && teacher.firstName.toLowerCase().includes(term)) ||
+        (teacher.surname && teacher.surname.toLowerCase().includes(term)) ||
+        (teacher.employeeNumber && teacher.employeeNumber.toLowerCase().includes(term)) ||
         (teacher.email && teacher.email.toLowerCase().includes(term))
       );
     }
@@ -179,9 +179,70 @@ export default function Teachers() {
   };
 
   const handleImportTeachers = async (importedTeachers: any[]) => {
-    // ... existing import logic ...
-    // For brevity, assuming similar logic to previous implementation but using new UI
-    toast({ title: "Import feature", description: "This would process the import." });
+    try {
+      if (!user?.school?.id) {
+        toast({
+          title: "Error",
+          description: "School ID not found. Please log in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const roleMap: Record<string, string> = {
+        'head_teacher': 'Head Teacher',
+        'deputy_head': 'Deputy Head',
+        'senior_teacher': 'Senior Teacher',
+        'subject_teacher': 'Teacher',
+        'teacher': 'Teacher'
+      };
+
+      const teachersToInsert = importedTeachers.map(t => ({
+        school_id: user.school.id,
+        first_name: t.firstName || '',
+        surname: t.lastName || '', // Map lastName to surname
+        email: t.email || '',
+        contact_number: t.phone || '',
+        position: roleMap[t.role] || 'Teacher', // Map role to position
+        employee_number: t.tsNumber || `T-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Fallback generation if missing
+        national_id: t.nrc || '',
+        date_of_birth: t.dateOfBirth,
+        gender: t.gender === 'M' ? 'Male' : t.gender === 'F' ? 'Female' : (t.gender || 'Male'),
+        qualification: t.qualifications || '',
+        date_employed: t.joinedDate || new Date().toISOString().split('T')[0],
+        status: 'Active', // Default status
+        // Fields not in Excel but might be needed
+        other_names: '',
+        subjects: [],
+        assigned_class_ids: []
+      }));
+
+
+
+      const { data, error } = await supabase
+        .from('teachers')
+        .insert(teachersToInsert)
+        .select();
+
+      if (error) throw error;
+
+      toast({
+        title: "Import Successful",
+        description: `Successfully imported ${teachersToInsert.length} teacher records.`,
+      });
+
+      // Refresh list
+      fetchTeachers();
+      setImportDialogOpen(false);
+
+    } catch (error) {
+      console.error('Import error:', error);
+      toast({
+        title: "Import Failed",
+        description: error instanceof Error ? error.message : "Failed to save teacher records.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleExportTeachers = () => {
@@ -190,7 +251,6 @@ export default function Teachers() {
 
   const canImportExport = user?.permissions?.includes('manage_staff') ||
     user?.role === 'head_teacher' ||
-    user?.role === 'senior_teacher' ||
     user?.role === 'super_admin';
 
   return (
@@ -206,12 +266,14 @@ export default function Teachers() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
-            <Link to={`/${schoolSlug}/teachers/add`}>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add Teacher
-            </Link>
-          </Button>
+          {AuthService.hasPermission('manage_staff') && (
+            <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
+              <Link to={`/${schoolSlug}/teachers/add`}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Teacher
+              </Link>
+            </Button>
+          )}
           {canImportExport && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -280,7 +342,7 @@ export default function Teachers() {
               <GraduationCap className="h-4 w-4 text-purple-500" />
             </div>
             <div className="text-2xl font-bold">
-              {teachers.filter(t => t.qualification.includes('Bachelor') || t.qualification.includes('Master')).length}
+              {teachers.filter(t => t.qualification && (t.qualification.includes('Bachelor') || t.qualification.includes('Master'))).length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Degree holders</p>
           </CardContent>
@@ -475,37 +537,41 @@ export default function Teachers() {
                                     <Eye className="mr-2 h-4 w-4" /> View Details
                                   </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                  <Link to={`/${schoolSlug}/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
-                                    <Edit className="mr-2 h-4 w-4" /> Edit Record
-                                  </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
-                                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                {AuthService.hasPermission('manage_staff') && (
+                                  <>
+                                    <DropdownMenuItem asChild>
+                                      <Link to={`/${schoolSlug}/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
+                                        <Edit className="mr-2 h-4 w-4" /> Edit Record
+                                      </Link>
                                     </DropdownMenuItem>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete Teacher Record</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Are you sure you want to delete {teacher.firstName} {teacher.surname}'s record?
-                                        This action cannot be undone.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => handleDeleteTeacher(teacher.id)}
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                    <DropdownMenuSeparator />
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                        </DropdownMenuItem>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete Teacher Record</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Are you sure you want to delete {teacher.firstName} {teacher.surname}'s record?
+                                            This action cannot be undone.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => handleDeleteTeacher(teacher.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          >
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -547,37 +613,41 @@ export default function Teachers() {
                                   <Eye className="mr-2 h-4 w-4" /> View Details
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem asChild>
-                                <Link to={`/${schoolSlug}/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
-                                  <Edit className="mr-2 h-4 w-4" /> Edit Record
-                                </Link>
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
-                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              {AuthService.hasPermission('manage_staff') && (
+                                <>
+                                  <DropdownMenuItem asChild>
+                                    <Link to={`/${schoolSlug}/teachers/${teacher.id}/edit`} className="flex items-center cursor-pointer">
+                                      <Edit className="mr-2 h-4 w-4" /> Edit Record
+                                    </Link>
                                   </DropdownMenuItem>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Teacher Record</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Are you sure you want to delete {teacher.firstName} {teacher.surname}'s record?
-                                      This action cannot be undone.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteTeacher(teacher.id)}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      Delete
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                                  <DropdownMenuSeparator />
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                      </DropdownMenuItem>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete Teacher Record</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Are you sure you want to delete {teacher.firstName} {teacher.surname}'s record?
+                                          This action cannot be undone.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => handleDeleteTeacher(teacher.id)}
+                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        >
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

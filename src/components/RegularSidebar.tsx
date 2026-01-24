@@ -76,7 +76,9 @@ const getMenuItems = (userRole: UserRole, userLevel: string, schoolSlug?: string
     if (AuthService.hasPermission(['manage_classes', 'manage_students'])) {
       items.push({ title: "Classes", url: p("/classes"), icon: BookOpen });
     }
-    items.push({ title: "Attendance", url: p("/attendance"), icon: ClipboardCheck });
+    if (userRole !== 'senior_teacher') {
+      items.push({ title: "Attendance", url: p("/attendance"), icon: ClipboardCheck });
+    }
     items.push({ title: "Timetable", url: p("/timetable"), icon: Clock });
     if (AuthService.hasPermission('manage_assessments')) {
       items.push({ title: "Academic Records", url: p("/academic-records"), icon: Award });
@@ -175,7 +177,7 @@ export function RegularSidebar() {
       "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200",
       isActive
         ? "bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25"
-        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground hover:shadow-md"
+        : "text-white hover:bg-sidebar-accent hover:text-white hover:shadow-md"
     );
 
   const handleLogout = () => {
@@ -278,29 +280,31 @@ export function RegularSidebar() {
         </SidebarGroup>
 
         {/* Settings */}
-        <SidebarGroup>
-          {!collapsed && (
-            <SidebarGroupLabel className="px-3 text-xs font-bold text-sidebar-foreground uppercase tracking-wider mb-2">
-              Account
-            </SidebarGroupLabel>
-          )}
-          <SidebarGroupContent>
-            <SidebarMenu className="space-y-1">
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to={user.school?.slug ? `/${user.school.slug}/settings` : "/settings"} className={getNavCls}>
-                    < Settings className={
-                      cn(
-                        "h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-90",
-                        collapsed && "mx-auto"
-                      )} />
-                    {!collapsed && <span className="truncate">Settings</span>}
-                  </NavLink >
-                </SidebarMenuButton >
-              </SidebarMenuItem >
-            </SidebarMenu >
-          </SidebarGroupContent >
-        </SidebarGroup >
+        {AuthService.hasPermission('manage_settings') && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-3 text-xs font-bold text-sidebar-foreground uppercase tracking-wider mb-2">
+                Account
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <NavLink to={user.school?.slug ? `/${user.school.slug}/settings` : "/settings"} className={getNavCls}>
+                      <Settings className={
+                        cn(
+                          "h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-90",
+                          collapsed && "mx-auto"
+                        )} />
+                      {!collapsed && <span className="truncate">Settings</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent >
 
       {/* Footer */}

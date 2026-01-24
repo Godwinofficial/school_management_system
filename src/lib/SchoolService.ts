@@ -12,6 +12,7 @@ export interface SchoolData {
     location: {
         province: string;
         district: string;
+        constituency: string; // Added field
         ward?: string;
     };
     type: string;
@@ -29,6 +30,7 @@ export interface School {
     location: {
         province: string;
         district: string;
+        constituency: string; // Added field
         ward?: string;
     };
     contact: {
@@ -72,6 +74,7 @@ export class SchoolService {
             location: {
                 province: row.province,
                 district: row.district,
+                constituency: row.constituency || '', // Added mapping
                 ward: row.ward || undefined,
             },
             contact: {
@@ -92,7 +95,7 @@ export class SchoolService {
                 totalStudents: row.total_enrolment || 0,
                 totalTeachers: 0, // fetching this would require a separate count query usually
             },
-            slug: row.slug || row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+            slug: row.slug || (row.name ? row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : 'school')
         };
     }
 
@@ -166,6 +169,7 @@ export class SchoolService {
             center_number: data.centerNumber,
             province: data.location.province,
             district: data.location.district,
+            constituency: data.location.constituency, // Added payload field
             ward: data.location.ward,
             type: data.type,
             email: data.contact.email,
@@ -201,6 +205,7 @@ export class SchoolService {
         if (data.centerNumber) updates.center_number = data.centerNumber;
         if (data.location?.province) updates.province = data.location.province;
         if (data.location?.district) updates.district = data.location.district;
+        if (data.location?.constituency) updates.constituency = data.location.constituency; // Added update field
         if (data.location?.ward) updates.ward = data.location.ward;
         if (data.type) updates.type = data.type;
         if (data.contact?.email) updates.email = data.contact.email;
@@ -266,6 +271,7 @@ export class SchoolService {
 
     private static async createInitialProfiles(schoolId: string, data: SchoolData) {
         const headEmail = data.contact.email;
+        const deputyEmail = `deputy.${data.contact.email}`;
         const seniorEmail = `senior.${data.contact.email}`;
 
         const profiles = [
@@ -282,8 +288,20 @@ export class SchoolService {
                 }
             },
             {
+                email: deputyEmail,
+                first_name: 'Deputy Head',
+                last_name: 'Teacher',
+                role: 'deputy_head',
+                school_id: schoolId,
+                province: data.location.province,
+                district: data.location.district,
+                metadata: {
+                    permissions: ['manage_staff', 'manage_students', 'manage_classes', 'manage_assessments', 'view_reports', 'manage_settings']
+                }
+            },
+            {
                 email: seniorEmail,
-                first_name: 'Senior',
+                first_name: 'HOD/Senior',
                 last_name: 'Teacher',
                 role: 'senior_teacher',
                 school_id: schoolId,
@@ -309,7 +327,7 @@ export class SchoolService {
             .from('classes')
             .select('*')
             .eq('school_id', schoolId)
-            .order('level', { ascending: true },)
+            .order('level', { ascending: true })
             .order('name', { ascending: true });
 
         if (error) {
@@ -378,6 +396,11 @@ export class SchoolService {
     }
 
     static async getTeachers(schoolId: string): Promise<any[]> {
+        if (!schoolId) {
+            console.warn('Invalid schoolId provided for fetching teachers:', schoolId);
+            return [];
+        }
+
         const { data, error } = await supabase
             .from('profiles')
             .select('id, first_name, last_name, role')
@@ -392,6 +415,30 @@ export class SchoolService {
         return data;
     }
 
+    static async getTeachersWithSubjects(schoolId: string): Promise<any[]> {
+        if (!schoolId) return [];
+
+        const { data, error } = await supabase
+            .from('teachers')
+            .select('id, first_name, surname, subjects, email, assigned_class_ids')
+            .eq('school_id', schoolId)
+            .eq('status', 'Active');
+
+        if (error) {
+            console.error('Error fetching teachers with subjects:', error);
+            return [];
+        }
+
+        return (data || []).map(t => ({
+            id: t.id,
+            first_name: t.first_name,
+            last_name: t.surname,
+            email: t.email,
+            subjects: t.subjects || [],
+            assigned_class_ids: t.assigned_class_ids || []
+        }));
+    }
+
     static async getSubjects(schoolId: string): Promise<any[]> {
         const { data, error } = await supabase
             .from('subjects')
@@ -403,6 +450,30 @@ export class SchoolService {
         }
 
         return data;
+    }
+
+    static async getStudents(schoolId: string): Promise<any[]> {
+        // Validation removed to support text IDs
+
+        const { data, error } = await supabase
+            .from('students')
+            .select('id, first_name, surname, enrolment_number')
+            .eq('school_id', schoolId)
+            .eq('status', 'Active'); // Only active students
+
+        if (error) {
+            console.error('Error fetching students:', error);
+            return [];
+        }
+
+        // Map to match Recipient interface
+        return (data || []).map(s => ({
+            id: s.id,
+            first_name: s.first_name,
+            last_name: s.surname,
+            role: 'student',
+            enrolment_number: s.enrolment_number
+        }));
     }
 
     private static async initializeClasses(schoolId: string) {

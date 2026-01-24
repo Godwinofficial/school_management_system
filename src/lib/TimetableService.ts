@@ -1,5 +1,7 @@
 import { supabase } from "./supabaseClient";
 
+
+
 export interface TimetableEntry {
     id: string;
     school_id: string;
@@ -22,6 +24,7 @@ export interface TimetableEntry {
 
 export class TimetableService {
     static async getTimetable(schoolId: string, filters?: { classId?: string; teacherId?: string }): Promise<TimetableEntry[]> {
+
         let query = supabase
             .from('timetables')
             .select(`
@@ -104,6 +107,10 @@ export class TimetableService {
 
 export class CommunicationService {
     static async getAnnouncements(schoolId: string, audience: string): Promise<any[]> {
+        if (!schoolId) {
+            console.warn('Invalid schoolId provided for announcements fetch:', schoolId);
+            return [];
+        }
         let query = supabase
             .from('announcements')
             .select(`
@@ -145,6 +152,10 @@ export class CommunicationService {
     }
 
     static async getMessages(schoolId: string, userId: string): Promise<any[]> {
+        if (!schoolId || !userId) {
+            console.warn('Invalid parameters for messaging:', { schoolId, userId });
+            return [];
+        }
         const { data, error } = await supabase
             .from('messages')
             .select(`

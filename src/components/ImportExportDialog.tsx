@@ -10,7 +10,7 @@ interface ImportExportDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     mode: 'import' | 'export';
-    type: 'students' | 'classes' | 'grading';
+    type: 'students' | 'classes' | 'grading' | 'teachers';
     onImport?: (data: any[]) => Promise<void>;
     onExport?: () => any[];
     title?: string;
@@ -78,6 +78,8 @@ export function ImportExportDialog({
                 result = await ExcelService.importClassesFromExcel(selectedFile);
             } else if (type === 'grading') {
                 result = await ExcelService.importGradingSystemFromExcel(selectedFile);
+            } else if (type === 'teachers') {
+                result = await ExcelService.importTeachersFromExcel(selectedFile);
             }
 
             setProgress(70);
@@ -103,6 +105,8 @@ export function ImportExportDialog({
             ExcelService.downloadClassTemplate();
         } else if (type === 'grading') {
             ExcelService.downloadGradingTemplate();
+        } else if (type === 'teachers') {
+            ExcelService.downloadTeacherTemplate();
         }
     };
 
@@ -132,6 +136,8 @@ export function ImportExportDialog({
                 ExcelService.exportClassesToExcel(data, `classes_${new Date().toISOString().split('T')[0]}.xlsx`);
             } else if (type === 'grading') {
                 ExcelService.exportGradingSystemToExcel(data, `grading_system_${new Date().toISOString().split('T')[0]}.xlsx`);
+            } else if (type === 'teachers') {
+                // ExcelService.exportTeachersToExcel(data, ...);
             }
 
             onOpenChange(false);
@@ -141,6 +147,7 @@ export function ImportExportDialog({
     const getTypeLabel = () => {
         if (type === 'students') return 'Students';
         if (type === 'classes') return 'Classes';
+        if (type === 'teachers') return 'Teachers';
         return 'Grading System';
     };
 
@@ -286,6 +293,14 @@ export function ImportExportDialog({
                                                                 <th className="p-2 text-left">Teacher</th>
                                                             </>
                                                         )}
+                                                        {type === 'teachers' && (
+                                                            <>
+                                                                <th className="p-2 text-left">Name</th>
+                                                                <th className="p-2 text-left">Email</th>
+                                                                <th className="p-2 text-left">Role</th>
+                                                                <th className="p-2 text-left">Phone</th>
+                                                            </>
+                                                        )}
                                                         {type === 'grading' && (
                                                             <>
                                                                 <th className="p-2 text-left">Range</th>
@@ -315,6 +330,14 @@ export function ImportExportDialog({
                                                                     <td className="p-2">{item.teacherName || 'N/A'}</td>
                                                                 </>
                                                             )}
+                                                            {type === 'teachers' && (
+                                                                <>
+                                                                    <td className="p-2">{item.firstName} {item.lastName}</td>
+                                                                    <td className="p-2">{item.email}</td>
+                                                                    <td className="p-2">{item.role}</td>
+                                                                    <td className="p-2">{item.phone || 'N/A'}</td>
+                                                                </>
+                                                            )}
                                                             {type === 'grading' && item.ranges && item.ranges.map((range: any, rIndex: number) => (
                                                                 <tr key={rIndex} className="border-t">
                                                                     <td className="p-2">{range.minScore}-{range.maxScore}</td>
@@ -327,6 +350,7 @@ export function ImportExportDialog({
                                                     ))}
                                                 </tbody>
                                             </table>
+
                                             {importedData.length > 10 && (
                                                 <p className="text-xs text-muted-foreground text-center mt-2">
                                                     ... and {importedData.length - 10} more records

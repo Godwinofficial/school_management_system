@@ -32,6 +32,24 @@ interface StatsData {
   graduated: number;
   orphans: number;
   withDisability: number;
+  statusStats: {
+    active: number;
+    transferred: number;
+    droppedOut: number;
+    graduated: number;
+  };
+  specialStats: {
+    orphans: number;
+    withDisability: number;
+    married: number;
+  };
+  performanceStats: {
+    excellent: number;
+    good: number;
+    average: number;
+    belowAverage: number;
+    poor: number;
+  };
 }
 
 export default function Statistics() {
@@ -47,7 +65,25 @@ export default function Statistics() {
     droppedOut: 0,
     graduated: 0,
     orphans: 0,
-    withDisability: 0
+    withDisability: 0,
+    statusStats: {
+      active: 0,
+      transferred: 0,
+      droppedOut: 0,
+      graduated: 0
+    },
+    specialStats: {
+      orphans: 0,
+      withDisability: 0,
+      married: 0
+    },
+    performanceStats: {
+      excellent: 0,
+      good: 0,
+      average: 0,
+      belowAverage: 0,
+      poor: 0
+    }
   });
 
   const user = AuthService.getCurrentUser();
@@ -57,6 +93,12 @@ export default function Statistics() {
     fetchStatistics();
   }, [user?.school?.id, userLevel]);
 
+  /* 
+   * Main function to fetch statistics data from Supabase.
+   * Based on the user's role (School or System), it fetches relevant student data.
+   * It populates the stats state with aggregated metrics and nested objects for
+   * status, special categories, and performance.
+   */
   const fetchStatistics = async () => {
     try {
       setLoading(true);
@@ -77,7 +119,25 @@ export default function Statistics() {
             droppedOut: students.filter(s => s.status === 'dropped_out').length,
             graduated: students.filter(s => s.status === 'graduated').length,
             orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
-            withDisability: students.filter(s => s.special_needs === true).length
+            withDisability: students.filter(s => s.special_needs === true).length,
+            statusStats: {
+              active: students.filter(s => s.status === 'active').length,
+              transferred: students.filter(s => s.status === 'transferred').length,
+              droppedOut: students.filter(s => s.status === 'dropped_out').length,
+              graduated: students.filter(s => s.status === 'graduated').length
+            },
+            specialStats: {
+              orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
+              withDisability: students.filter(s => s.special_needs === true).length,
+              married: 0
+            },
+            performanceStats: {
+              excellent: 0,
+              good: 0,
+              average: 0,
+              belowAverage: 0,
+              poor: 0
+            }
           });
         }
       } else if (userLevel === 'system') {
@@ -95,7 +155,25 @@ export default function Statistics() {
             droppedOut: students.filter(s => s.status === 'dropped_out').length,
             graduated: students.filter(s => s.status === 'graduated').length,
             orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
-            withDisability: students.filter(s => s.special_needs === true).length
+            withDisability: students.filter(s => s.special_needs === true).length,
+            statusStats: {
+              active: students.filter(s => s.status === 'active').length,
+              transferred: students.filter(s => s.status === 'transferred').length,
+              droppedOut: students.filter(s => s.status === 'dropped_out').length,
+              graduated: students.filter(s => s.status === 'graduated').length
+            },
+            specialStats: {
+              orphans: students.filter(s => s.orphan_status === 'orphan' || s.orphan_status === 'vulnerable').length,
+              withDisability: students.filter(s => s.special_needs === true).length,
+              married: 0
+            },
+            performanceStats: {
+              excellent: 0,
+              good: 0,
+              average: 0,
+              belowAverage: 0,
+              poor: 0
+            }
           });
         }
       }
@@ -182,6 +260,18 @@ export default function Statistics() {
     { name: 'Dropped Out', value: stats.droppedOut, color: '#ef4444' },
     { name: 'Graduated', value: stats.graduated, color: '#3b82f6' },
   ];
+
+  if (!AuthService.hasPermission('view_statistics')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] space-y-4">
+        <AlertTriangle className="h-12 w-12 text-muted-foreground opacity-50" />
+        <h2 className="text-xl font-semibold">Access Restricted</h2>
+        <p className="text-muted-foreground text-center max-w-sm">
+          You do not have permission to view school statistics. Please contact your administrator.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">

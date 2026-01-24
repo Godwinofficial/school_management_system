@@ -20,6 +20,7 @@ import Students from "./pages/Students";
 import AddStudent from "./pages/AddStudent";
 import StudentPortal from "./pages/StudentPortal";
 import StudentDetails from "./pages/StudentDetails";
+import StudentResults from "./pages/StudentResults";
 import TeacherDetails from "./pages/TeacherDetails";
 import Teachers from "./pages/Teachers";
 import AddTeacher from "./pages/AddTeacher";
@@ -69,6 +70,7 @@ import SupportTickets from "./pages/admin/SupportTickets";
 import BulkImport from "./pages/admin/BulkImport";
 import DataExport from "./pages/admin/DataExport";
 import ActivityLogs from "./pages/admin/ActivityLogs";
+import { seedDefaultSchool } from "@/lib/seed";
 
 const queryClient = new QueryClient();
 
@@ -143,6 +145,8 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(AuthService.isAuthenticated());
 
+
+
   useEffect(() => {
     const handleStorageChange = () => {
       setIsAuthenticated(AuthService.isAuthenticated());
@@ -153,6 +157,9 @@ const App = () => {
 
     // Custom event for authentication changes
     window.addEventListener('authChange', handleStorageChange);
+
+    // Auto-seed DB with default school if missing (Fix for FK errors)
+    seedDefaultSchool();
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -180,6 +187,9 @@ const App = () => {
                     if (user?.role === 'student') {
                       return <Navigate to={`/${schoolSlug || 'national'}/student`} />;
                     }
+                    if (user?.role === 'guardian') {
+                      return <Navigate to={`/${schoolSlug || 'national'}/parent`} />;
+                    }
                     if (user?.role === 'subject_teacher') {
                       return <Navigate to={`/${schoolSlug}/teacher-dashboard`} />;
                     }
@@ -199,6 +209,18 @@ const App = () => {
               <Route path="/:schoolSlug/student" element={
                 <ProtectedRoute requiredRoles="student">
                   <StudentPortal />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/:schoolSlug/student/results" element={
+                <ProtectedRoute requiredRoles={['student', 'guardian']}>
+                  <StudentResults />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/:schoolSlug/parent" element={
+                <ProtectedRoute requiredRoles="guardian">
+                  <ParentPortal />
                 </ProtectedRoute>
               } />
 

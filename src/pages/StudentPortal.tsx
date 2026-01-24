@@ -16,11 +16,17 @@ export default function StudentPortal() {
 
   useEffect(() => {
     const fetchStudentData = async () => {
-      if (user && user.role === 'student' && user.id) {
+      if (user && (user.role === 'student' || user.role === 'guardian')) {
         try {
           const { StudentService } = await import("@/lib/StudentService");
-          const studentRecord = await StudentService.getStudent(user.id);
-          setStudent(studentRecord);
+
+          // For students, use their own ID. For guardians, use the linked student ID.
+          const targetId = user.role === 'student' ? user.id : user.metadata?.studentId;
+
+          if (targetId) {
+            const studentRecord = await StudentService.getStudent(targetId);
+            setStudent(studentRecord);
+          }
         } catch (error) {
           console.error("Failed to fetch student record:", error);
         }
@@ -29,12 +35,12 @@ export default function StudentPortal() {
     fetchStudentData();
   }, [user]);
 
-  if (!user || user.role !== 'student') {
+  if (!user || (user.role !== 'student' && user.role !== 'guardian')) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-destructive">Access Denied</h1>
-          <p className="text-muted-foreground">This portal is only for students.</p>
+          <p className="text-muted-foreground">This portal is only for students and guardians.</p>
         </div>
       </div>
     );
@@ -80,7 +86,7 @@ export default function StudentPortal() {
     // Student Info
     doc.text(`Student: ${student.firstName} ${student.surname}`, 20, 70);
     doc.text(`ID: ${student.enrolmentNumber}`, 20, 80);
-    doc.text(`Level: ${student.currentLevel}`, 20, 90);
+    doc.text(`Grade: ${student.currentLevel}`, 20, 90);
     doc.text(`Gender: ${student.gender}`, 20, 100);
 
     // Performance
@@ -114,18 +120,18 @@ export default function StudentPortal() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-success bg-clip-text text-transparent">
-                Student Portal
+                {user.role === 'guardian' ? 'Parent Portal' : 'Student Portal'}
               </h1>
               <p className="text-muted-foreground">Welcome back, {user.firstName}!</p>
             </div>
           </div>
           <div className="flex gap-2">
             <Button
-              onClick={() => generateReportCard()}
-              className="flex items-center gap-2"
+              onClick={() => navigate(`/${user.school?.slug || 'school'}/student/results`)}
+              className="flex items-center gap-2 shadow-lg shadow-primary/25"
             >
-              <FileText className="h-4 w-4" />
-              Download Report Card
+              <Award className="h-4 w-4" />
+              View Full Results
             </Button>
             <Button
               variant="outline"
@@ -184,7 +190,7 @@ export default function StudentPortal() {
               </div>
               <div>
                 <span className="text-sm font-medium">Current Level:</span>
-                <Badge variant="outline">Level {student.currentLevel}</Badge>
+                <Badge variant="outline">Grade {student.currentLevel}</Badge>
               </div>
               <div>
                 <span className="text-sm font-medium">Status:</span>
@@ -247,7 +253,7 @@ export default function StudentPortal() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-primary" />
-                Academic Progress - Level {student.currentLevel}
+                Academic Progress - Grade {student.currentLevel}
               </CardTitle>
               <CardDescription>
                 Your current academic performance breakdown
@@ -374,33 +380,43 @@ export default function StudentPortal() {
             </Card>
           )}
 
-          {student.guardian && (
-            <Card className="border-0 shadow-soft md:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-lg">Guardian Information</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <span className="text-sm font-medium">Name:</span>
-                  <p className="text-sm text-muted-foreground">
-                    {student.guardian.firstName} {student.guardian.surname}
-                  </p>
+          <Card className="border-0 shadow-soft md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-lg">Guardian Information</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              {student.guardian ? (
+                <>
+                  <div>
+                    <span className="text-sm font-medium">Name:</span>
+                    <p className="text-sm text-muted-foreground">
+                      {student.guardian.firstName} {student.guardian.surname}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium">Occupation:</span>
+                    <p className="text-sm text-muted-foreground">{student.guardian.occupation}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium">Contact:</span>
+                    <p className="text-sm text-muted-foreground">{student.guardian.contactNumber}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium">Email:</span>
+                    <p className="text-sm text-muted-foreground">{student.guardian.email || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium">Address:</span>
+                    <p className="text-sm text-muted-foreground">{student.guardian.residentialAddress}</p>
+                  </div>
+                </>
+              ) : (
+                <div className="col-span-2 text-center py-4 text-muted-foreground">
+                  No guardian information registered.
                 </div>
-                <div>
-                  <span className="text-sm font-medium">Occupation:</span>
-                  <p className="text-sm text-muted-foreground">{student.guardian.occupation}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium">Contact:</span>
-                  <p className="text-sm text-muted-foreground">{student.guardian.contactNumber}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium">Address:</span>
-                  <p className="text-sm text-muted-foreground">{student.guardian.residentialAddress}</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

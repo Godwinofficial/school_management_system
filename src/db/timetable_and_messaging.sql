@@ -2,9 +2,9 @@
 CREATE TABLE IF NOT EXISTS public.timetables (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     school_id text REFERENCES public.schools(id) ON DELETE CASCADE,
-    class_id uuid REFERENCES public.classes(id) ON DELETE CASCADE,
+    class_id text REFERENCES public.classes(id) ON DELETE CASCADE, -- Changed to text to support string IDs
     teacher_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-    subject_id uuid REFERENCES public.subjects(id) ON DELETE SET NULL,
+    subject_id text REFERENCES public.subjects(id) ON DELETE SET NULL, -- Changed to text to support simple IDs
     day_of_week int NOT NULL, -- 1=Monday, ..., 5=Friday
     start_time time NOT NULL,
     end_time time NOT NULL,

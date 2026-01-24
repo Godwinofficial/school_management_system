@@ -4,7 +4,6 @@ import {
     SidebarContent,
     SidebarGroup,
     SidebarGroupContent,
-    SidebarGroupLabel,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
@@ -17,7 +16,9 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
 import { AuthService } from "@/lib/auth";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function SuperAdminSidebar() {
     const navigate = useNavigate();
@@ -122,10 +123,15 @@ export function SuperAdminSidebar() {
                                                     {item.items.map((subItem) => (
                                                         <SidebarMenuSubItem key={subItem.title}>
                                                             <SidebarMenuSubButton asChild>
-                                                                <a href={subItem.url}>
+                                                                <NavLink 
+                                                                    to={subItem.url}
+                                                                    className={({ isActive }) => cn(
+                                                                        isActive && "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                                                                    )}
+                                                                >
                                                                     <subItem.icon className="w-4 h-4" />
                                                                     <span>{subItem.title}</span>
-                                                                </a>
+                                                                </NavLink>
                                                             </SidebarMenuSubButton>
                                                         </SidebarMenuSubItem>
                                                     ))}
@@ -134,10 +140,15 @@ export function SuperAdminSidebar() {
                                         </Collapsible>
                                     ) : (
                                         <SidebarMenuButton asChild>
-                                            <a href={item.url}>
+                                            <NavLink 
+                                                to={item.url}
+                                                className={({ isActive }) => cn(
+                                                    isActive && "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                                                )}
+                                            >
                                                 <item.icon className="w-4 h-4" />
                                                 <span>{item.title}</span>
-                                            </a>
+                                            </NavLink>
                                         </SidebarMenuButton>
                                     )}
                                 </SidebarMenuItem>
@@ -158,13 +169,15 @@ export function SuperAdminSidebar() {
                             <p className="text-xs text-muted-foreground">System Admin</p>
                         </div>
                     </div>
-                    <button
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={handleLogout}
-                        className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
+                        className="hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                         title="Logout"
                     >
-                        <LogOut className="w-4 h-4 text-destructive" />
-                    </button>
+                        <LogOut className="w-4 h-4" />
+                    </Button>
                 </div>
             </SidebarFooter>
         </Sidebar>

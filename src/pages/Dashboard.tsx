@@ -22,8 +22,16 @@ interface DashboardStats {
   recentEnrollments: number;
 }
 
+import TeacherDashboard from "./TeacherDashboard";
+
 export default function Dashboard() {
   const user = AuthService.getCurrentUser();
+
+  // If user is a teacher, show the teacher dashboard
+  if (user?.role === 'subject_teacher') {
+    return <TeacherDashboard />;
+  }
+
   const userLevel = AuthService.getUserLevel();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,

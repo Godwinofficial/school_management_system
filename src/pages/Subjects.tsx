@@ -119,77 +119,79 @@ export default function Subjects() {
                         Manage the educational curriculum and subject list for your school
                     </p>
                 </div>
-                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button
-                            className="bg-primary hover:bg-primary/90"
-                            onClick={() => {
-                                setEditingSubject(null);
-                                setFormData({ name: "", code: "", category: "Core" });
-                            }}
-                        >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Subject
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>{editingSubject ? "Edit Subject" : "Add New Subject"}</DialogTitle>
-                            <DialogDescription>
-                                Define a subject that can be assigned to teachers and students.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Subject Name *</Label>
-                                <Input
-                                    id="name"
-                                    placeholder="e.g., Mathematics"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                />
+                {AuthService.hasPermission('manage_subjects') && (
+                    <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button
+                                className="bg-primary hover:bg-primary/90"
+                                onClick={() => {
+                                    setEditingSubject(null);
+                                    setFormData({ name: "", code: "", category: "Core" });
+                                }}
+                            >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Subject
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>{editingSubject ? "Edit Subject" : "Add New Subject"}</DialogTitle>
+                                <DialogDescription>
+                                    Define a subject that can be assigned to teachers and students.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="name">Subject Name *</Label>
+                                    <Input
+                                        id="name"
+                                        placeholder="e.g., Mathematics"
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="code">Subject Code *</Label>
+                                    <Input
+                                        id="code"
+                                        placeholder="e.g., MATH101"
+                                        value={formData.code}
+                                        onChange={e => setFormData({ ...formData, code: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="category">Category</Label>
+                                    <Select
+                                        value={formData.category}
+                                        onValueChange={(val: any) => setFormData({ ...formData, category: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select category" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Core">Core</SelectItem>
+                                            <SelectItem value="Elective">Elective</SelectItem>
+                                            <SelectItem value="Optional">Optional</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="description">Description</Label>
+                                    <Input
+                                        id="description"
+                                        placeholder="Brief overview of the subject"
+                                        value={formData.description}
+                                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                    />
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="code">Subject Code *</Label>
-                                <Input
-                                    id="code"
-                                    placeholder="e.g., MATH101"
-                                    value={formData.code}
-                                    onChange={e => setFormData({ ...formData, code: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="category">Category</Label>
-                                <Select
-                                    value={formData.category}
-                                    onValueChange={(val: any) => setFormData({ ...formData, category: val })}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select category" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="Core">Core</SelectItem>
-                                        <SelectItem value="Elective">Elective</SelectItem>
-                                        <SelectItem value="Optional">Optional</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="description">Description</Label>
-                                <Input
-                                    id="description"
-                                    placeholder="Brief overview of the subject"
-                                    value={formData.description}
-                                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSave}>Save Subject</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+                                <Button onClick={handleSave}>Save Subject</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
 
             <Card className="border-0 shadow-soft">
@@ -252,27 +254,29 @@ export default function Subjects() {
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => {
-                                                        setEditingSubject(subject);
-                                                        setFormData(subject);
-                                                        setIsAddDialogOpen(true);
-                                                    }}
-                                                >
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="text-destructive hover:text-destructive"
-                                                    onClick={() => handleDelete(subject.id)}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
+                                            {AuthService.hasPermission('manage_subjects') && (
+                                                <div className="flex justify-end gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => {
+                                                            setEditingSubject(subject);
+                                                            setFormData(subject);
+                                                            setIsAddDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="text-destructive hover:text-destructive"
+                                                        onClick={() => handleDelete(subject.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))

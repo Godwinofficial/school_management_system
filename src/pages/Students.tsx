@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+
 import { Badge } from "@/components/ui/badge";
 import {
     Table,
@@ -22,6 +24,7 @@ import { StorageService, Student, Teacher, Class } from "@/lib/storage";
 import { StudentService } from "@/lib/StudentService";
 import { SchoolService, School } from "@/lib/SchoolService";
 import { AuthService } from "@/lib/auth";
+import { SupabaseService } from "@/lib/SupabaseService";
 import {
     Search,
     UserPlus,
@@ -76,12 +79,67 @@ export default function Students() {
     const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
     const [importDialogOpen, setImportDialogOpen] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
+    const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false); // Added state
     const [transferDialogOpen, setTransferDialogOpen] = useState(false);
     const [studentToTransfer, setStudentToTransfer] = useState<Student | null>(null);
-    const [targetSchoolId, setTargetSchoolId] = useState<string>("");
+    const [transferReason, setTransferReason] = useState("");
+    // const [targetSchoolId, setTargetSchoolId] = useState<string>(""); // Removed as we are transferring to pool using schoolId=null
+
+    const handleDeleteAllStudents = async () => {
+        if (!user?.school?.id) return;
+
+        try {
+            const success = await StudentService.deleteAllStudents(user.school.id);
+            if (success) {
+                setStudents([]);
+                toast({
+                    title: "Success",
+                    description: "All student records have been deleted.",
+                    variant: "default",
+                });
+            } else {
+                throw new Error("Deletion failed");
+            }
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to delete all students.",
+                variant: "destructive",
+            });
+        }
+        setDeleteAllDialogOpen(false);
+    };
     const [availableSchools, setAvailableSchools] = useState<School[]>([]);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [classes, setClasses] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState("all");
+
+    // Helper to check profile completeness
+    const isProfileComplete = (student: Student) => {
+        // 1. Check for explicitly flagged missing records
+        if (student.missingRecords && student.missingRecords.length > 0) return false;
+
+        // 2. Check for single parent/guardian with basic contact info
+        // We now enforce a single "guardian" entity for functionality
+        // But for backward compatibility we check if ANY parent info exists, 
+        // prioritizing the "guardian" field which is now the standard.
+        const hasGuardian = student.guardian && student.guardian.firstName && student.guardian.contactNumber;
+        // Fallback checks for legacy data (optional, but good for UX if we haven't migrated data)
+        const hasFather = student.father && student.father.firstName && student.father.contactNumber;
+        const hasMother = student.mother && student.mother.firstName && student.mother.contactNumber;
+        // Check Unified simplified field too (often from imports)
+        const hasParentGuardian = student.parentGuardian && (student.parentGuardian.name && student.parentGuardian.phoneNumber);
+
+        // The requirement is "incomplete if missing... guardian". 
+        // If we strictly enforce the new rule, we should just check hasGuardian.
+        // But if we want to show existing "complete" students as still complete, we might keep the OR.
+        // Given the request "separate students with incomplete profiles", let's strict check for ANY valid contact.
+        const hasParentInfo = hasGuardian || hasFather || hasMother || hasParentGuardian;
+
+        if (!hasParentInfo) return false;
+
+        return true;
+    };
 
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -98,25 +156,31 @@ export default function Students() {
                 userLevel === 'school' ? user?.school?.id : undefined
             );
 
-            // Filter students for regular teachers - only show students in their assigned classes
-            if (user?.role === 'teacher') {
-                const teacher = StorageService.getTeacher(user.id);
-                if (teacher?.assignedClassIds && teacher.assignedClassIds.length > 0) {
-                    // Show students only from assigned classes
-                    loadedStudents = loadedStudents.filter(student =>
-                        student.classId && teacher.assignedClassIds?.includes(student.classId)
-                    );
-                } else {
-                    // Show students where teacher is the subject teacher
-                    const teacherClasses = StorageService.getClasses(user?.school?.id)
-                        .filter(cls => cls.teacherId === teacher?.id)
-                        .map(cls => cls.id);
-                    loadedStudents = loadedStudents.filter(student =>
-                        student.classId && teacherClasses.includes(student.classId)
-                    );
+            // Head Teachers, Deputy Heads, Senior Teachers, and admins see all students
+
+            // Filter students for subject teachers - only show students in their assigned classes
+            if (user?.role === 'subject_teacher' || user?.role === 'teacher') {
+                try {
+                    const teacherProfile = await SupabaseService.getTeacherProfile(user.id);
+                    const assignedClassIds = teacherProfile?.assigned_class_ids || [];
+
+                    if (assignedClassIds.length > 0) {
+                        loadedStudents = loadedStudents.filter(student =>
+                            student.classId && assignedClassIds.includes(student.classId)
+                        );
+                    } else if (user?.classId) {
+                        // Fallback to user object classId if available
+                        loadedStudents = loadedStudents.filter(student => student.classId === user.classId);
+                    } else {
+                        // If no classes assigned, show no students
+                        loadedStudents = [];
+                    }
+                } catch (err) {
+                    console.error("Error fetching teacher profile for filtering:", err);
+                    // Fail safe: show no students if we can't verify assignment
+                    loadedStudents = [];
                 }
             }
-            // Head Teachers, Deputy Heads, Senior Teachers, and admins see all students
 
             setStudents(loadedStudents);
         };
@@ -166,8 +230,15 @@ export default function Students() {
             result = result.filter(s => s.currentLevel.toString() === levelFilter);
         }
 
+        // Tab Filter (Completeness)
+        if (activeTab === "complete") {
+            result = result.filter(s => isProfileComplete(s));
+        } else if (activeTab === "incomplete") {
+            result = result.filter(s => !isProfileComplete(s));
+        }
+
         setFilteredStudents(result);
-    }, [searchTerm, students, statusFilter, genderFilter, levelFilter]);
+    }, [searchTerm, students, statusFilter, genderFilter, levelFilter, activeTab]);
 
     const handleDeleteStudent = async (studentId: string) => {
         try {
@@ -270,6 +341,17 @@ export default function Students() {
                         address: s.address || '',
                         occupation: ''
                     },
+                    guardian: {
+                        firstName: (s.guardianName || '').split(' ')[0] || '',
+                        surname: (s.guardianName || '').split(' ').slice(1).join(' ') || '',
+                        otherNames: '',
+                        gender: 'Female', // Default for imported
+                        residentialAddress: s.address || '',
+                        occupation: '',
+                        dateOfBirth: '',
+                        contactNumber: s.guardianPhone || '',
+                        email: s.guardianEmail || ''
+                    },
                     emergencyContact: {
                         name: '',
                         relationship: '',
@@ -340,50 +422,62 @@ export default function Students() {
     };
 
     const handleTransferStudent = async () => {
-        if (!studentToTransfer || !targetSchoolId) return;
+        if (!studentToTransfer) return;
 
-        const targetSchool = availableSchools.find(s => s.id === targetSchoolId);
-        if (!targetSchool) return;
-
-        const year = new Date().getFullYear();
-        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-        const newEnrolmentNumber = `${targetSchool.centerNumber}/${year}/${random}`;
+        // National Pool Transfer Logic
+        // We set schoolId to null (or empty string if type requires) to remove from current school
+        // But keep the student record intact with 'Transferred' status
 
         const updatedStudent: Student = {
             ...studentToTransfer,
-            schoolId: targetSchoolId,
-            enrolmentNumber: newEnrolmentNumber,
-            status: 'Active', // Reset to Active in new school
+            schoolId: null as any, // Null indicates National Pool (no specific school)
+            status: 'Transferred',
+            transferReason: transferReason,
+            transferDate: new Date().toISOString(),
+            previousSchool: user?.school?.name || "Unknown School", // Capture current school name
             classId: undefined, // Clear class assignment
             academicPerformance: studentToTransfer.academicPerformance || {} // Preserve history
         };
 
-        await StudentService.saveStudent(updatedStudent);
+        try {
+            await StudentService.saveStudent(updatedStudent);
 
-        // Update local state
-        if (userLevel === 'school') {
-            // Remove from current view if viewing a specific school
-            setStudents(students.filter(s => s.id !== studentToTransfer.id));
-        } else {
-            // Update in place if viewing all
-            setStudents(students.map(s => s.id === updatedStudent.id ? updatedStudent : s));
+            // Update local state
+            if (userLevel === 'school') {
+                // Remove from current view if viewing a specific school
+                setStudents(students.filter(s => s.id !== studentToTransfer.id));
+            } else {
+                // Update in place if viewing all
+                setStudents(students.map(s => s.id === updatedStudent.id ? updatedStudent : s));
+            }
+
+            setTransferDialogOpen(false);
+            setStudentToTransfer(null);
+            setTransferReason("");
+
+            toast({
+                title: "Transfer Successful",
+                description: `Student moved to National Pool.`,
+                className: "bg-blue-500 text-white border-none"
+            });
+        } catch (error) {
+            console.error("Transfer failed", error);
+            toast({
+                title: "Transfer Failed",
+                description: "Could not transfer student. Please try again.",
+                variant: "destructive"
+            });
         }
-
-        setTransferDialogOpen(false);
-        setStudentToTransfer(null);
-        setTargetSchoolId("");
-
-        toast({
-            title: "Transfer Successful",
-            description: `Student transferred to ${targetSchool.name}. New ID: ${newEnrolmentNumber}`,
-            className: "bg-blue-500 text-white border-none"
-        });
     };
 
     // Check permissions
     const canImportExport = user?.permissions?.includes('manage_students') ||
-        user?.role === 'head_teacher' ||
-        user?.role === 'senior_teacher';
+        user?.role === 'head_teacher';
+
+    const canManageStudents = user?.role === 'head_teacher' ||
+        user?.role === 'deputy_head' ||
+        user?.role === 'super_admin' ||
+        user?.permissions?.includes('manage_students');
 
     return (
         <div className="space-y-8 pb-10">
@@ -398,12 +492,14 @@ export default function Students() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
-                        <Link to={`/${schoolSlug}/students/add`}>
-                            <UserPlus className="h-4 w-4 mr-2" />
-                            Add Student
-                        </Link>
-                    </Button>
+                    {AuthService.hasPermission('manage_students') && (
+                        <Button asChild className="bg-primary hover:bg-primary/90 shadow-sm">
+                            <Link to={`/${schoolSlug}/students/add`}>
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Add Student
+                            </Link>
+                        </Button>
+                    )}
                     {canImportExport && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -412,7 +508,7 @@ export default function Students() {
                                     Actions
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuContent align="end" className="w-56">
                                 <DropdownMenuLabel>Data Management</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => setImportDialogOpen(true)}>
@@ -423,12 +519,44 @@ export default function Students() {
                                     <Download className="h-4 w-4 mr-2" />
                                     Export Excel
                                 </DropdownMenuItem>
+                                {user?.role === 'head_teacher' && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            onClick={() => setDeleteAllDialogOpen(true)}
+                                            className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/10"
+                                        >
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Delete All Students
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
                             </DropdownMenuContent>
                         </DropdownMenu>
                     )}
                 </div>
-            </div>
 
+                <AlertDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete ALL student records
+                                for this school from the database.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={handleDeleteAllStudents}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                                Continue & Delete All
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </div>
             {/* Statistics Cards */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
@@ -487,362 +615,400 @@ export default function Students() {
                 </Card>
             </div>
 
+            {/* Dashboard Statistics - ONLY SHOW ON "ALL" TAB OR ALWAYS? ALWAYS IS FINE */}
+
             {/* Main Content Area */}
-            <Card className="border shadow-sm">
-                <CardHeader className="pb-3">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <CardTitle>Student Directory</CardTitle>
+            <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
+                    <TabsList className="grid w-full grid-cols-3 md:w-auto">
+                        <TabsTrigger value="all">All Students</TabsTrigger>
+                        <TabsTrigger value="complete">Complete Profiles</TabsTrigger>
+                        <TabsTrigger value="incomplete" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-900 dark:data-[state=active]:bg-amber-900/40 dark:data-[state=active]:text-amber-400">
+                            Incomplete Profiles
+                            {students.filter(s => !isProfileComplete(s)).length > 0 && (
+                                <Badge variant="secondary" className="ml-2 bg-amber-200 text-amber-800 dark:bg-amber-800 dark:text-amber-200 hover:bg-amber-200">
+                                    {students.filter(s => !isProfileComplete(s)).length}
+                                </Badge>
+                            )}
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
 
-                        {/* View Toggle */}
-                        <div className="flex items-center bg-muted/50 p-1 rounded-lg border">
-                            <Button
-                                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                                size="sm"
-                                className="h-8 px-2 lg:px-3"
-                                onClick={() => setViewMode('list')}
-                            >
-                                <List className="h-4 w-4 mr-2" />
-                                <span className="hidden sm:inline">List</span>
-                            </Button>
-                            <Button
-                                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                                size="sm"
-                                className="h-8 px-2 lg:px-3"
-                                onClick={() => setViewMode('grid')}
-                            >
-                                <LayoutGrid className="h-4 w-4 mr-2" />
-                                <span className="hidden sm:inline">Grid</span>
-                            </Button>
-                        </div>
-                    </div>
-                    <CardDescription>
-                        Browse and manage all student records. Use filters to narrow down your search.
-                    </CardDescription>
-                </CardHeader>
+                <Card className="border shadow-sm">
+                    <CardHeader className="pb-3">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <CardTitle>
+                                {activeTab === 'all' && "Student Directory"}
+                                {activeTab === 'complete' && "Complete Student Profiles"}
+                                {activeTab === 'incomplete' && "Incomplete Student Profiles"}
+                            </CardTitle>
 
-                <CardContent>
-                    {/* Filters Toolbar */}
-                    <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                            <Input
-                                placeholder="Search by name, ID, or keyword..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-9 bg-white dark:bg-slate-950"
-                            />
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <Select value={levelFilter} onValueChange={setLevelFilter}>
-                                <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
-                                    <SelectValue placeholder="Grade" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Grades</SelectItem>
-                                    {[...Array(12)].map((_, i) => (
-                                        <SelectItem key={i + 1} value={(i + 1).toString()}>Grade {i + 1}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="Active">Active</SelectItem>
-                                    <SelectItem value="Transferred">Transferred</SelectItem>
-                                    <SelectItem value="Dropped Out">Dropped Out</SelectItem>
-                                    <SelectItem value="Graduated">Graduated</SelectItem>
-                                </SelectContent>
-                            </Select>
-
-                            <Select value={genderFilter} onValueChange={setGenderFilter}>
-                                <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
-                                    <SelectValue placeholder="Gender" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Genders</SelectItem>
-                                    <SelectItem value="Male">Male</SelectItem>
-                                    <SelectItem value="Female">Female</SelectItem>
-                                </SelectContent>
-                            </Select>
-
-                            {(searchTerm || statusFilter !== 'all' || genderFilter !== 'all' || levelFilter !== 'all') && (
+                            {/* View Toggle */}
+                            <div className="flex items-center bg-muted/50 p-1 rounded-lg border">
                                 <Button
-                                    variant="ghost"
+                                    variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                                    size="sm"
+                                    className="h-8 px-2 lg:px-3"
+                                    onClick={() => setViewMode('list')}
+                                >
+                                    <List className="h-4 w-4 mr-2" />
+                                    <span className="hidden sm:inline">List</span>
+                                </Button>
+                                <Button
+                                    variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                                    size="sm"
+                                    className="h-8 px-2 lg:px-3"
+                                    onClick={() => setViewMode('grid')}
+                                >
+                                    <LayoutGrid className="h-4 w-4 mr-2" />
+                                    <span className="hidden sm:inline">Grid</span>
+                                </Button>
+                            </div>
+                        </div>
+                        <CardDescription>
+                            {activeTab === 'incomplete'
+                                ? "Students with missing information or documents. Please review and update their records."
+                                : "Browse and manage student records. Use filters to narrow down your search."}
+                        </CardDescription>
+                    </CardHeader>
+
+                    <CardContent>
+                        {/* Filters Toolbar */}
+                        <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                                <Input
+                                    placeholder="Search by name, ID, or keyword..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-9 bg-white dark:bg-slate-950"
+                                />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Select value={levelFilter} onValueChange={setLevelFilter}>
+                                    <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
+                                        <SelectValue placeholder="Grade" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Grades</SelectItem>
+                                        {[...Array(12)].map((_, i) => (
+                                            <SelectItem key={i + 1} value={(i + 1).toString()}>Grade {i + 1}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
+                                        <SelectValue placeholder="Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        <SelectItem value="Active">Active</SelectItem>
+                                        <SelectItem value="Transferred">Transferred</SelectItem>
+                                        <SelectItem value="Dropped Out">Dropped Out</SelectItem>
+                                        <SelectItem value="Graduated">Graduated</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={genderFilter} onValueChange={setGenderFilter}>
+                                    <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950">
+                                        <SelectValue placeholder="Gender" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Genders</SelectItem>
+                                        <SelectItem value="Male">Male</SelectItem>
+                                        <SelectItem value="Female">Female</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                {(searchTerm || statusFilter !== 'all' || genderFilter !== 'all' || levelFilter !== 'all') && (
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => {
+                                            setSearchTerm("");
+                                            setStatusFilter("all");
+                                            setGenderFilter("all");
+                                            setLevelFilter("all");
+                                        }}
+                                        className="px-3"
+                                    >
+                                        Reset
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Content Display */}
+                        {filteredStudents.length === 0 ? (
+                            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                                <div className="flex justify-center mb-4">
+                                    <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-full">
+                                        <Search className="h-8 w-8 text-muted-foreground" />
+                                    </div>
+                                </div>
+                                <h3 className="text-lg font-medium">No students found</h3>
+                                <p className="text-muted-foreground max-w-sm mx-auto mt-2">
+                                    We couldn't find any students matching your current filters. Try adjusting your search or filters.
+                                </p>
+                                <Button
+                                    variant="outline"
+                                    className="mt-6"
                                     onClick={() => {
                                         setSearchTerm("");
                                         setStatusFilter("all");
                                         setGenderFilter("all");
                                         setLevelFilter("all");
                                     }}
-                                    className="px-3"
                                 >
-                                    Reset
+                                    Clear Filters
                                 </Button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Content Display */}
-                    {filteredStudents.length === 0 ? (
-                        <div className="text-center py-12 border-2 border-dashed rounded-lg bg-slate-50 dark:bg-slate-900/50">
-                            <div className="flex justify-center mb-4">
-                                <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-full">
-                                    <Search className="h-8 w-8 text-muted-foreground" />
-                                </div>
                             </div>
-                            <h3 className="text-lg font-medium">No students found</h3>
-                            <p className="text-muted-foreground max-w-sm mx-auto mt-2">
-                                We couldn't find any students matching your current filters. Try adjusting your search or filters.
-                            </p>
-                            <Button
-                                variant="outline"
-                                className="mt-6"
-                                onClick={() => {
-                                    setSearchTerm("");
-                                    setStatusFilter("all");
-                                    setGenderFilter("all");
-                                    setLevelFilter("all");
-                                }}
-                            >
-                                Clear Filters
-                            </Button>
-                        </div>
-                    ) : (
-                        <>
-                            {viewMode === 'list' ? (
-                                <div className="rounded-md border overflow-hidden">
-                                    <Table>
-                                        <TableHeader className="bg-slate-50 dark:bg-slate-900">
-                                            <TableRow>
-                                                <TableHead className="w-[250px]">Student</TableHead>
-                                                <TableHead>ID Number</TableHead>
-                                                <TableHead>Grade</TableHead>
-                                                <TableHead>Gender</TableHead>
-                                                <TableHead>Status</TableHead>
-                                                <TableHead>Performance</TableHead>
-                                                <TableHead className="text-right">Actions</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {filteredStudents.map((student) => (
-                                                <TableRow key={student.id} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                                                    <TableCell>
+                        ) : (
+                            <>
+                                {viewMode === 'list' ? (
+                                    <div className="rounded-md border overflow-hidden">
+                                        <Table>
+                                            <TableHeader className="bg-slate-50 dark:bg-slate-900">
+                                                <TableRow>
+                                                    <TableHead className="w-[250px]">Student</TableHead>
+                                                    <TableHead>ID Number</TableHead>
+                                                    <TableHead>Grade</TableHead>
+                                                    <TableHead>Gender</TableHead>
+                                                    <TableHead>Status</TableHead>
+                                                    <TableHead>Performance</TableHead>
+                                                    <TableHead className="text-right">Actions</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {filteredStudents.map((student) => (
+                                                    <TableRow key={student.id} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <Avatar className="h-9 w-9 border">
+                                                                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${student.firstName} ${student.surname}`} />
+                                                                    <AvatarFallback>{getInitials(student.firstName, student.surname)}</AvatarFallback>
+                                                                </Avatar>
+                                                                <div>
+                                                                    <div className="font-medium text-slate-900 dark:text-slate-100">
+                                                                        {student.firstName} {student.surname}
+                                                                    </div>
+                                                                    <div className="text-xs text-muted-foreground">
+                                                                        {student.otherNames}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="font-mono text-xs text-muted-foreground">
+                                                            {student.enrolmentNumber}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="secondary" className="font-normal">
+                                                                Grade {student.currentLevel}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-sm">{student.gender}</TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline" className={`${getStatusColor(student.status)} border`}>
+                                                                {student.status}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <span className={`text-sm ${getPerformanceColor(student.overallPerformance)}`}>
+                                                                {student.overallPerformance}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                                        <MoreHorizontal className="h-4 w-4" />
+                                                                    </Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuItem asChild>
+                                                                        <Link to={`/${schoolSlug}/students/${student.id}`} className="flex items-center cursor-pointer">
+                                                                            <Eye className="mr-2 h-4 w-4" /> View Details
+                                                                        </Link>
+                                                                    </DropdownMenuItem>
+                                                                    {canManageStudents && (
+                                                                        <>
+                                                                            <DropdownMenuItem asChild>
+                                                                                <Link to={`/${schoolSlug}/students/${student.id}/edit`} className="flex items-center cursor-pointer">
+                                                                                    <Edit className="mr-2 h-4 w-4" /> Edit Record
+                                                                                </Link>
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem
+                                                                                onClick={() => {
+                                                                                    setStudentToTransfer(student);
+                                                                                    setTransferDialogOpen(true);
+                                                                                }}
+                                                                                className="cursor-pointer"
+                                                                            >
+                                                                                <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer
+                                                                            </DropdownMenuItem>
+
+                                                                            <DropdownMenuSeparator />
+                                                                            <AlertDialog>
+                                                                                <AlertDialogTrigger asChild>
+                                                                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                                                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                                                                    </DropdownMenuItem>
+                                                                                </AlertDialogTrigger>
+                                                                                <AlertDialogContent>
+                                                                                    <AlertDialogHeader>
+                                                                                        <AlertDialogTitle>Delete Student Record</AlertDialogTitle>
+                                                                                        <AlertDialogDescription>
+                                                                                            Are you sure you want to delete {student.firstName} {student.surname}'s record?
+                                                                                            This action cannot be undone.
+                                                                                        </AlertDialogDescription>
+                                                                                    </AlertDialogHeader>
+                                                                                    <AlertDialogFooter>
+                                                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                                        <AlertDialogAction
+                                                                                            onClick={() => handleDeleteStudent(student.id)}
+                                                                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                                                        >
+                                                                                            Delete
+                                                                                        </AlertDialogAction>
+                                                                                    </AlertDialogFooter>
+                                                                                </AlertDialogContent>
+                                                                            </AlertDialog>
+                                                                        </>
+                                                                    )}
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                        {filteredStudents.map((student) => (
+                                            <Card key={student.id} className="overflow-hidden hover:shadow-md transition-all group">
+                                                <div className={`h-2 w-full ${getStatusColor(student.status).split(' ')[0]}`} />
+                                                <CardHeader className="pb-2 pt-4">
+                                                    <div className="flex justify-between items-start">
                                                         <div className="flex items-center gap-3">
-                                                            <Avatar className="h-9 w-9 border">
+                                                            <Avatar className="h-10 w-10 border">
                                                                 <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${student.firstName} ${student.surname}`} />
                                                                 <AvatarFallback>{getInitials(student.firstName, student.surname)}</AvatarFallback>
                                                             </Avatar>
                                                             <div>
-                                                                <div className="font-medium text-slate-900 dark:text-slate-100">
+                                                                <CardTitle className="text-base">
                                                                     {student.firstName} {student.surname}
-                                                                </div>
-                                                                <div className="text-xs text-muted-foreground">
-                                                                    {student.otherNames}
-                                                                </div>
+                                                                </CardTitle>
+                                                                <CardDescription className="text-xs font-mono mt-0.5">
+                                                                    {student.enrolmentNumber}
+                                                                </CardDescription>
                                                             </div>
                                                         </div>
-                                                    </TableCell>
-                                                    <TableCell className="font-mono text-xs text-muted-foreground">
-                                                        {student.enrolmentNumber}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="secondary" className="font-normal">
-                                                            Grade {student.currentLevel}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell className="text-sm">{student.gender}</TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline" className={`${getStatusColor(student.status)} border`}>
-                                                            {student.status}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <span className={`text-sm ${getPerformanceColor(student.overallPerformance)}`}>
-                                                            {student.overallPerformance}
-                                                        </span>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                                    <MoreHorizontal className="h-4 w-4" />
-                                                                </Button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end">
-                                                                <DropdownMenuItem asChild>
-                                                                    <Link to={`/${schoolSlug}/students/${student.id}`} className="flex items-center cursor-pointer">
-                                                                        <Eye className="mr-2 h-4 w-4" /> View Details
-                                                                    </Link>
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem asChild>
-                                                                    <Link to={`/${schoolSlug}/students/${student.id}/edit`} className="flex items-center cursor-pointer">
-                                                                        <Edit className="mr-2 h-4 w-4" /> Edit Record
-                                                                    </Link>
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem
-                                                                    onClick={() => {
-                                                                        setStudentToTransfer(student);
-                                                                        setTransferDialogOpen(true);
-                                                                    }}
-                                                                    className="cursor-pointer"
-                                                                >
-                                                                    <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer
-                                                                </DropdownMenuItem>
-
-                                                                <DropdownMenuSeparator />
-                                                                <AlertDialog>
-                                                                    <AlertDialogTrigger asChild>
-                                                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
-                                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                                        </DropdownMenuItem>
-                                                                    </AlertDialogTrigger>
-                                                                    <AlertDialogContent>
-                                                                        <AlertDialogHeader>
-                                                                            <AlertDialogTitle>Delete Student Record</AlertDialogTitle>
-                                                                            <AlertDialogDescription>
-                                                                                Are you sure you want to delete {student.firstName} {student.surname}'s record?
-                                                                                This action cannot be undone.
-                                                                            </AlertDialogDescription>
-                                                                        </AlertDialogHeader>
-                                                                        <AlertDialogFooter>
-                                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                            <AlertDialogAction
-                                                                                onClick={() => handleDeleteStudent(student.id)}
-                                                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                        <div className="flex items-center gap-1">
+                                                            {!isProfileComplete(student) && (
+                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500 text-amber-600 bg-amber-50">Incomplete</Badge>
+                                                            )}
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2">
+                                                                        <MoreHorizontal className="h-4 w-4" />
+                                                                    </Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuItem asChild>
+                                                                        <Link to={`/${schoolSlug}/students/${student.id}`} className="flex items-center cursor-pointer">
+                                                                            <Eye className="mr-2 h-4 w-4" /> View Details
+                                                                        </Link>
+                                                                    </DropdownMenuItem>
+                                                                    {canManageStudents && (
+                                                                        <>
+                                                                            <DropdownMenuItem asChild>
+                                                                                <Link to={`/${schoolSlug}/students/${student.id}/edit`} className="flex items-center cursor-pointer">
+                                                                                    <Edit className="mr-2 h-4 w-4" /> Edit Record
+                                                                                </Link>
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem
+                                                                                onClick={() => {
+                                                                                    setStudentToTransfer(student);
+                                                                                    setTransferDialogOpen(true);
+                                                                                }}
+                                                                                className="cursor-pointer"
                                                                             >
-                                                                                Delete
-                                                                            </AlertDialogAction>
-                                                                        </AlertDialogFooter>
-                                                                    </AlertDialogContent>
-                                                                </AlertDialog>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            ) : (
-                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                    {filteredStudents.map((student) => (
-                                        <Card key={student.id} className="overflow-hidden hover:shadow-md transition-all group">
-                                            <div className={`h-2 w-full ${getStatusColor(student.status).split(' ')[0]}`} />
-                                            <CardHeader className="pb-2 pt-4">
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex items-center gap-3">
-                                                        <Avatar className="h-10 w-10 border">
-                                                            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${student.firstName} ${student.surname}`} />
-                                                            <AvatarFallback>{getInitials(student.firstName, student.surname)}</AvatarFallback>
-                                                        </Avatar>
-                                                        <div>
-                                                            <CardTitle className="text-base">
-                                                                {student.firstName} {student.surname}
-                                                            </CardTitle>
-                                                            <CardDescription className="text-xs font-mono mt-0.5">
-                                                                {student.enrolmentNumber}
-                                                            </CardDescription>
+                                                                                <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuSeparator />
+                                                                            <AlertDialog>
+                                                                                <AlertDialogTrigger asChild>
+                                                                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
+                                                                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                                                                    </DropdownMenuItem>
+                                                                                </AlertDialogTrigger>
+                                                                                <AlertDialogContent>
+                                                                                    <AlertDialogHeader>
+                                                                                        <AlertDialogTitle>Delete Student Record</AlertDialogTitle>
+                                                                                        <AlertDialogDescription>
+                                                                                            Are you sure you want to delete {student.firstName} {student.surname}'s record?
+                                                                                            This action cannot be undone.
+                                                                                        </AlertDialogDescription>
+                                                                                    </AlertDialogHeader>
+                                                                                    <AlertDialogFooter>
+                                                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                                        <AlertDialogAction
+                                                                                            onClick={() => handleDeleteStudent(student.id)}
+                                                                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                                                        >
+                                                                                            Delete
+                                                                                        </AlertDialogAction>
+                                                                                    </AlertDialogFooter>
+                                                                                </AlertDialogContent>
+                                                                            </AlertDialog>
+                                                                        </>
+                                                                    )}
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
                                                         </div>
                                                     </div>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2">
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem asChild>
-                                                                <Link to={`/${schoolSlug}/students/${student.id}`} className="flex items-center cursor-pointer">
-                                                                    <Eye className="mr-2 h-4 w-4" /> View Details
-                                                                </Link>
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem asChild>
-                                                                <Link to={`/${schoolSlug}/students/${student.id}/edit`} className="flex items-center cursor-pointer">
-                                                                    <Edit className="mr-2 h-4 w-4" /> Edit Record
-                                                                </Link>
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem
-                                                                onClick={() => {
-                                                                    setStudentToTransfer(student);
-                                                                    setTransferDialogOpen(true);
-                                                                }}
-                                                                className="cursor-pointer"
-                                                            >
-                                                                <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                            <AlertDialog>
-                                                                <AlertDialogTrigger asChild>
-                                                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 cursor-pointer">
-                                                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                                    </DropdownMenuItem>
-                                                                </AlertDialogTrigger>
-                                                                <AlertDialogContent>
-                                                                    <AlertDialogHeader>
-                                                                        <AlertDialogTitle>Delete Student Record</AlertDialogTitle>
-                                                                        <AlertDialogDescription>
-                                                                            Are you sure you want to delete {student.firstName} {student.surname}'s record?
-                                                                            This action cannot be undone.
-                                                                        </AlertDialogDescription>
-                                                                    </AlertDialogHeader>
-                                                                    <AlertDialogFooter>
-                                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                        <AlertDialogAction
-                                                                            onClick={() => handleDeleteStudent(student.id)}
-                                                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                                                        >
-                                                                            Delete
-                                                                        </AlertDialogAction>
-                                                                    </AlertDialogFooter>
-                                                                </AlertDialogContent>
-                                                            </AlertDialog>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent className="pb-3 text-sm space-y-2">
-                                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                                    <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
-                                                        <span className="text-muted-foreground block mb-0.5">Grade</span>
-                                                        <span className="font-medium">Grade {student.currentLevel}</span>
+                                                </CardHeader>
+                                                <CardContent className="pb-3 text-sm space-y-2">
+                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
+                                                            <span className="text-muted-foreground block mb-0.5">Grade</span>
+                                                            <span className="font-medium">Grade {student.currentLevel}</span>
+                                                        </div>
+                                                        <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
+                                                            <span className="text-muted-foreground block mb-0.5">Gender</span>
+                                                            <span className="font-medium">{student.gender}</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
-                                                        <span className="text-muted-foreground block mb-0.5">Gender</span>
-                                                        <span className="font-medium">{student.gender}</span>
+                                                    <div className="flex items-center justify-between pt-1">
+                                                        <span className="text-muted-foreground text-xs">Performance</span>
+                                                        <span className={`text-xs font-medium ${getPerformanceColor(student.overallPerformance)}`}>
+                                                            {student.overallPerformance}
+                                                        </span>
                                                     </div>
-                                                </div>
-                                                <div className="flex items-center justify-between pt-1">
-                                                    <span className="text-muted-foreground text-xs">Performance</span>
-                                                    <span className={`text-xs font-medium ${getPerformanceColor(student.overallPerformance)}`}>
-                                                        {student.overallPerformance}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center justify-between pt-1">
-                                                    <span className="text-muted-foreground text-xs">Status</span>
-                                                    <Badge variant="outline" className={`text-[10px] px-1.5 h-5 ${getStatusColor(student.status)} border`}>
-                                                        {student.status}
-                                                    </Badge>
-                                                </div>
-                                            </CardContent>
-                                            <CardFooter className="pt-0 pb-4">
-                                                <Button variant="outline" size="sm" className="w-full text-xs h-8" asChild>
-                                                    <Link to={`/${schoolSlug}/students/${student.id}`}>
-                                                        View Profile
-                                                    </Link>
-                                                </Button>
-                                            </CardFooter>
-                                        </Card>
-                                    ))}
-                                </div>
-                            )}
-                        </>
-                    )}
-                </CardContent>
-            </Card>
+                                                    <div className="flex items-center justify-between pt-1">
+                                                        <span className="text-muted-foreground text-xs">Status</span>
+                                                        <Badge variant="outline" className={`text-[10px] px-1.5 h-5 ${getStatusColor(student.status)} border`}>
+                                                            {student.status}
+                                                        </Badge>
+                                                    </div>
+                                                </CardContent>
+                                                <CardFooter className="pt-0 pb-4">
+                                                    <Button variant="outline" size="sm" className="w-full text-xs h-8" asChild>
+                                                        <Link to={`/${schoolSlug}/students/${student.id}`}>
+                                                            View Profile
+                                                        </Link>
+                                                    </Button>
+                                                </CardFooter>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </CardContent>
+                </Card>
+            </Tabs>
 
             {/* Import/Export Dialogs */}
             <ImportExportDialog
@@ -864,38 +1030,32 @@ export default function Students() {
             <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Transfer Student</DialogTitle>
+                        <DialogTitle>Transfer Student to National Pool</DialogTitle>
                         <DialogDescription>
-                            Transfer {studentToTransfer?.firstName} {studentToTransfer?.surname} to another school.
-                            This will generate a new student ID for the new school.
+                            Transfer {studentToTransfer?.firstName} {studentToTransfer?.surname} to the National Pool.
+                            They will be removed from your active student list but their records will be preserved.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="school">Destination School</Label>
-                            <Select value={targetSchoolId} onValueChange={setTargetSchoolId}>
-                                <SelectTrigger id="school">
-                                    <SelectValue placeholder="Select school..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableSchools
-                                        .filter(s => s.id !== user?.school?.id) // Exclude current school
-                                        .map(school => (
-                                            <SelectItem key={school.id} value={school.id}>
-                                                {school.name} ({school.district})
-                                            </SelectItem>
-                                        ))
-                                    }
-                                </SelectContent>
-                            </Select>
+                            <Label htmlFor="reason">Reason for Transfer / Comments</Label>
+                            <Textarea
+                                id="reason"
+                                placeholder="e.g., Relocating to another district, Parent request, etc."
+                                value={transferReason}
+                                onChange={(e) => setTransferReason(e.target.value)}
+                                className="min-h-[100px]"
+                            />
                         </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleTransferStudent} disabled={!targetSchoolId}>Confirm Transfer</Button>
+                        <Button onClick={handleTransferStudent} disabled={!transferReason.trim()}>
+                            Confirm Transfer
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     );
 }

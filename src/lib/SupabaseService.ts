@@ -20,6 +20,57 @@ export interface ProfileSeed {
   school_id?: string;
   province?: string;
   district?: string;
+  department?: string;
+}
+
+export interface TeacherData {
+  id: string;
+  assignedClass: string;
+  subjects: string[];
+  todaysSchedule: Array<{
+    time: string;
+    subject: string;
+    class: string;
+    type: string;
+    topic?: string;
+  }>;
+}
+
+export interface ClassData {
+  id: string;
+  name: string;
+  totalStudents: number;
+  genderStats: {
+    male: number;
+    female: number;
+  };
+  studentsNeedingAttention: Array<{
+    id: string;
+    name: string;
+    subject: string;
+    issue: string;
+    severity: 'low' | 'medium' | 'high';
+  }>;
+}
+
+export interface Exam {
+  id: string;
+  subject: string;
+  date: string;
+  topic: string;
+  totalMarks: number;
+  type: string;
+}
+
+export interface Assessment {
+  id: string;
+  classId: string;
+  subject: string;
+  title: string;
+  dueDate: string;
+  totalSubmissions: number;
+  pendingGrading: number;
+  type: string;
 }
 
 export class SupabaseService {
@@ -151,5 +202,125 @@ export class SupabaseService {
   static async getSubjects() {
     const { data, error } = await supabase.from('subjects').select('*');
     return { data, error };
+  }
+
+  // Teacher Dashboard Methods
+  static async getTeacherProfile(userId: string) {
+    // First try to find in teachers table directly linked to auth user (if possible)
+    // Or mostly likely, we link via email for now as per current schema
+
+    // For this implementation, we'll try to find a teacher record where email matches
+    // In a real production app, you'd have a user_id column in teachers table.
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email, school_id')
+      .eq('id', userId)
+      .single();
+
+    if (!profile) return null;
+
+    const { data: teacher } = await supabase
+      .from('teachers')
+      .select('*')
+      .eq('email', profile.email)
+      .single();
+
+    return teacher;
+  }
+
+  static async getTeacherSchedule(teacherId: string) {
+    // Get today's day of week (1=Monday, etc)
+    const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon...
+    const adjustedDay = dayOfWeek === 0 ? 7 : dayOfWeek; // Adjust if your DB uses 1-7 (Mon-Sun) or similar. Assuming 1=Mon.
+
+    const { data, error } = await supabase
+      .from('timetables')
+      .select(`
+        *,
+        class:classes(name),
+        subject:subjects(name) -- or just use subject_id if it is text name
+      `)
+      .eq('teacher_id', teacherId) // This assumes timetables uses teacher UUID
+      .eq('day_of_week', adjustedDay)
+      .order('start_time', { ascending: true });
+
+    return { data, error };
+  }
+
+  static async getClassStats(classId: string): Promise<ClassData | null> {
+    // 1. Get class details
+    const { data: classDetails } = await supabase
+      .from('classes')
+      .select('name')
+      .eq('id', classId)
+      .single();
+
+    if (!classDetails) return null;
+
+    // 2. Get students
+    const { data: students } = await supabase
+      .from('students')
+      .select('gender')
+      .eq('class_id', classId);
+
+    const totalStudents = students?.length || 0;
+    const male = students?.filter(s => s.gender === 'Male').length || 0;
+    const female = students?.filter(s => s.gender === 'Female').length || 0;
+
+    // 3. Mock "Needs Attention" for now (or could be a real table)
+    // In future: fetch from an 'academic_alerts' table
+    const studentsNeedingAttention = [];
+
+    return {
+      id: classId,
+      name: classDetails.name,
+      totalStudents,
+      genderStats: { male, female },
+      studentsNeedingAttention
+    };
+  }
+
+  static async getUpcomingExams(schoolId: string, teacherId?: string): Promise<Exam[]> {
+    let query = supabase
+      .from('exams')
+      .select('*')
+      .eq('school_id', schoolId)
+      .gte('date', new Date().toISOString().split('T')[0])
+      .order('date', { ascending: true })
+      .limit(5);
+
+    // If we want to filter by teacher's subjects, we'd need that logic. 
+    // For now, return school exams or filter logic in UI
+
+    const { data } = await query;
+    return (data as any[])?.map(e => ({
+      id: e.id,
+      subject: e.subject,
+      date: e.date,
+      topic: e.topic,
+      totalMarks: e.total_marks,
+      type: e.type
+    })) || [];
+  }
+
+  static async getPendingAssessments(teacherId: string): Promise<Assessment[]> {
+    const { data } = await supabase
+      .from('assessments')
+      .select('*')
+      .eq('teacher_id', teacherId)
+      .gt('due_date', new Date().toISOString())
+      .limit(5);
+
+    return (data as any[])?.map(a => ({
+      id: a.id,
+      classId: a.class_id,
+      subject: a.subject,
+      title: a.title,
+      dueDate: a.due_date,
+      totalSubmissions: a.total_submissions,
+      pendingGrading: a.pending_grading,
+      type: a.type
+    })) || [];
   }
 }
